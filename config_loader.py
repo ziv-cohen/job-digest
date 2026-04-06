@@ -52,6 +52,8 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
         "JSEARCH_API_KEY": ("api_keys", "jsearch_rapidapi_key"),
         "ADZUNA_APP_ID": ("api_keys", "adzuna_app_id"),
         "ADZUNA_APP_KEY": ("api_keys", "adzuna_app_key"),
+        "TELEGRAM_BOT_TOKEN": ("telegram", "bot_token"),
+        "TELEGRAM_CHAT_ID": ("telegram", "chat_id"),
         "SMTP_SERVER": ("email", "smtp_server"),
         "SMTP_PORT": ("email", "smtp_port"),
         "SENDER_EMAIL": ("email", "sender_email"),

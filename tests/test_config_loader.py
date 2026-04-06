@@ -99,3 +99,17 @@ def test_load_config_env_var_not_set_leaves_default(tmp_path, monkeypatch):
     monkeypatch.delenv("SMTP_SERVER", raising=False)
     config = load_config(tmp_path)
     assert config["email"]["smtp_server"] == "original"
+
+
+def test_load_config_env_var_telegram_bot_token(tmp_path, monkeypatch):
+    _write_yaml(tmp_path / "config.yaml", {"telegram": {"bot_token": "YOUR_TOKEN"}})
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "real-token-123")
+    config = load_config(tmp_path)
+    assert config["telegram"]["bot_token"] == "real-token-123"
+
+
+def test_load_config_env_var_telegram_chat_id(tmp_path, monkeypatch):
+    _write_yaml(tmp_path / "config.yaml", {"telegram": {"chat_id": "YOUR_CHAT_ID"}})
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "987654321")
+    config = load_config(tmp_path)
+    assert config["telegram"]["chat_id"] == 987654321
