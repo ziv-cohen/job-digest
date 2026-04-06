@@ -55,8 +55,8 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
 
 def _build_messages(jobs: list[Job]) -> list[str]:
     """Build a list of messages, splitting if content exceeds Telegram's limit."""
-    today = datetime.now().strftime("%d %b %Y")
-    header = f"<b>Job Digest — {today}</b>\n{len(jobs)} matches\n"
+    now = datetime.now().strftime("%d %b %Y, %H:%M")
+    header = f"<b>Job Digest — {now}</b>\n{len(jobs)} matches\n"
 
     job_blocks = [_format_job(i, job) for i, job in enumerate(jobs, 1)]
 
