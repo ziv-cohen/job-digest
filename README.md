@@ -241,7 +241,7 @@ The test suite (212 tests) runs fully offline — all external APIs and SMTP are
 
 ## Roadmap
 
-See [TODO.md](TODO.md) for planned improvements, including:
+See the [issue tracker](https://github.com/ziv-cohen/job-digest/issues) for planned improvements, including:
 
 - Profile match scoring via LLM (cross-reference job requirements with your CV)
 - Hybrid job detection
