@@ -1,0 +1,15 @@
+.git
+.gitignore
+.claude/
+.vscode/
+.pytest_cache/
+__pycache__/
+*.pyc
+venv/
+.venv/
+config.local.yaml
+dry_run_results.json
+tests/
+pytest.ini
+TODO.md
+README.md
