@@ -1,0 +1,12 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway cron: run daily at 8:00 AM UTC+1 (Prague) = 7:00 AM UTC
+cronSchedule = "0 7 * * *"
+restartPolicyType = "NEVER"
+
+[deploy.healthcheck]
+# No healthcheck needed — this is a cron job, not a web server
+enabled = false

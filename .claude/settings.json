@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); cmd=$(echo \"$input\" | python -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('command',''))\" 2>/dev/null); if echo \"$cmd\" | grep -qE 'git[[:space:]]+commit'; then if [ -d \"tests\" ]; then python -m pytest tests/ -q; if [ $? -ne 0 ]; then echo '{\"continue\": false, \"stopReason\": \"Tests failed — commit blocked. Fix failures first.\"}'; fi; fi; fi",
+            "statusMessage": "Running tests before commit…",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

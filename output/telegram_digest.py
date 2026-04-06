@@ -1,0 +1,118 @@
+"""Send the job digest as a Telegram message via Bot API."""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from typing import Any
+
+import requests
+
+from models import Job
+
+logger = logging.getLogger(__name__)
+
+TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
+MAX_MESSAGE_LENGTH = 4096  # Telegram hard limit per message
+
+
+def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
+    """Send ranked jobs as one or more Telegram messages."""
+    tg_cfg = config.get("telegram", {})
+    bot_token = tg_cfg.get("bot_token", "")
+    chat_id = tg_cfg.get("chat_id", "")
+
+    if not bot_token or bot_token.startswith("YOUR_"):
+        logger.warning("Telegram bot token not configured — skipping.")
+        return False
+    if not chat_id:
+        logger.warning("Telegram chat_id not configured — skipping.")
+        return False
+
+    if not jobs:
+        logger.info("No jobs to send — skipping Telegram digest.")
+        return True
+
+    messages = _build_messages(jobs)
+    url = TELEGRAM_API_URL.format(token=bot_token)
+
+    for i, text in enumerate(messages, 1):
+        try:
+            resp = requests.post(url, json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            }, timeout=15)
+            resp.raise_for_status()
+            logger.info("Telegram: sent message %d/%d", i, len(messages))
+        except requests.RequestException as exc:
+            logger.error("Telegram: failed to send message %d/%d: %s", i, len(messages), exc)
+            return False
+
+    return True
+
+
+def _build_messages(jobs: list[Job]) -> list[str]:
+    """Build a list of messages, splitting if content exceeds Telegram's limit."""
+    today = datetime.now().strftime("%d %b %Y")
+    header = f"<b>Job Digest — {today}</b>\n{len(jobs)} matches\n"
+
+    job_blocks = [_format_job(i, job) for i, job in enumerate(jobs, 1)]
+
+    messages: list[str] = []
+    current = header
+    for block in job_blocks:
+        if len(current) + len(block) > MAX_MESSAGE_LENGTH:
+            messages.append(current)
+            current = block
+        else:
+            current += block
+    if current:
+        messages.append(current)
+
+    return messages
+
+
+def _format_job(rank: int, job: Job) -> str:
+    salary = job.salary_text or job._salary_range() or "Not disclosed"
+
+    location_parts = []
+    if job.location:
+        location_parts.append(job.location)
+    if job.is_remote:
+        region = f" ({job.remote_region})" if job.remote_region else ""
+        location_parts.append(f"Remote{region}")
+    location = " · ".join(location_parts) or "Not specified"
+
+    meta_parts = []
+    if job.seniority:
+        meta_parts.append(job.seniority.replace("_", " ").title())
+    if job.company_type and job.company_type != "unknown":
+        meta_parts.append(job.company_type.title())
+    if job.has_growth_signals:
+        meta_parts.append("Growing company")
+    meta = " · ".join(meta_parts)
+
+    date = "Recent"
+    if job.date_posted:
+        from datetime import timezone
+        age_hours = (datetime.now(timezone.utc) - job.date_posted).total_seconds() / 3600
+        if age_hours < 24:
+            date = "Today"
+        elif age_hours < 48:
+            date = "Yesterday"
+        else:
+            date = job.date_posted.strftime("%d %b")
+
+    lines = [
+        f"\n<b>#{rank} [{job.score:.0f} pts] <a href=\"{job.url}\">{job.title}</a></b>",
+        f"🏢 {job.company}",
+        f"📍 {location}",
+        f"💰 {salary}",
+    ]
+    if meta:
+        lines.append(f"🏷 {meta}")
+    lines.append(f"🕐 {date} · {job.source.title()}")
+
+    return "\n".join(lines) + "\n"

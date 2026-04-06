@@ -1,0 +1,34 @@
+# Secrets and local config
+config.local.yaml
+.env
+
+# Build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Test and runtime artifacts
+dry_run_results.json
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code local settings (permissions are machine-specific)
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
