@@ -22,5 +22,5 @@
 
 ## Infrastructure
 
-- [ ] Automated daily run — schedule the pipeline to run once a day and deliver the digest automatically (e.g. Railway.app cron, Google Cloud Run Scheduler, or Windows Task Scheduler for local runs)
+- [x] Automated daily run — deployed on Railway.app, cron `0 7 * * *` (8:00 AM Prague time)
 - [ ] Integrate TODO list with external board (Linear / GitHub Issues / Jira)
