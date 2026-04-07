@@ -55,10 +55,12 @@ _TITLE_PATTERNS = {
     "em": [
         r"engineering\s+manager",
     ],
-    "head": [
-        r"head\s+of\s+engineering",
+    "vp": [
         r"vp\s+(?:of\s+)?engineering",
         r"vice\s+president.*engineering",
+    ],
+    "head": [
+        r"head\s+of\s+engineering",
     ],
     "founding_cto": [
         r"founding\s+cto",
@@ -80,10 +82,15 @@ def _score_title(job: Job, cfg: dict) -> float:
             job.seniority = job.seniority or "director"
             return title_cfg["exact_director"]
 
+    for pattern in _TITLE_PATTERNS["vp"]:
+        if re.search(pattern, title_lower):
+            job.seniority = job.seniority or "vp"
+            return title_cfg["exact_vp"]
+
     for pattern in _TITLE_PATTERNS["head"]:
         if re.search(pattern, title_lower):
             job.seniority = job.seniority or "director"
-            return title_cfg["exact_director"]  # Head/VP = director level
+            return title_cfg["exact_director"]
 
     for pattern in _TITLE_PATTERNS["founding_cto"]:
         if re.search(pattern, title_lower):
@@ -213,7 +220,7 @@ def _score_seniority(job: Job, cfg: dict) -> float:
     seniority = job.seniority.lower() if job.seniority else ""
 
     # May have been set during title scoring
-    if seniority == "director":
+    if seniority in ("director", "vp"):
         return sen_cfg["director_level"]
     if seniority == "senior_manager":
         return sen_cfg["senior_manager"]
@@ -222,7 +229,10 @@ def _score_seniority(job: Job, cfg: dict) -> float:
 
     # Infer from title if not yet set
     title_lower = job.title.lower()
-    if any(kw in title_lower for kw in ["director", "head of", "vp ", "chief"]):
+    if any(kw in title_lower for kw in ["vp ", "vice president"]):
+        job.seniority = "vp"
+        return sen_cfg["director_level"]
+    if any(kw in title_lower for kw in ["director", "head of", "chief"]):
         job.seniority = "director"
         return sen_cfg["director_level"]
     if "senior" in title_lower and "manager" in title_lower:

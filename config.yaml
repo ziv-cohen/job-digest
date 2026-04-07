@@ -52,6 +52,7 @@ search:
 scoring:
   title_match:
     max_points: 30
+    exact_vp: 30           # VP Engineering / Head of Engineering (above director)
     exact_director: 30
     exact_senior_em: 25
     exact_em: 18          # boosted if company shows growth signals

@@ -11,6 +11,7 @@ def scoring_cfg():
     return {
         "title_match": {
             "max_points": 30,
+            "exact_vp": 30,
             "exact_director": 30,
             "exact_senior_em": 25,
             "exact_em": 18,

@@ -66,6 +66,17 @@ def test_title_head_of_engineering(scoring_cfg):
 def test_title_vp_engineering(scoring_cfg):
     job = make_job(title="VP Engineering")
     assert _score_title(job, scoring_cfg) == 30
+    assert job.seniority == "vp"
+
+def test_title_vp_of_engineering(scoring_cfg):
+    job = make_job(title="VP of Engineering")
+    assert _score_title(job, scoring_cfg) == 30
+    assert job.seniority == "vp"
+
+def test_title_head_of_engineering_tagged_director(scoring_cfg):
+    job = make_job(title="Head of Engineering")
+    _score_title(job, scoring_cfg)
+    assert job.seniority == "director"
 
 def test_title_founding_cto(scoring_cfg):
     job = make_job(title="Founding CTO")
@@ -240,7 +251,7 @@ def test_seniority_manager_pretagged(scoring_cfg):
 def test_seniority_inferred_from_vp_title(scoring_cfg):
     job = make_job(title="VP of Product", seniority="")
     assert _score_seniority(job, scoring_cfg) == 15
-    assert job.seniority == "director"
+    assert job.seniority == "vp"
 
 def test_seniority_inferred_senior_manager_from_title(scoring_cfg):
     job = make_job(title="Senior Product Manager", seniority="")
