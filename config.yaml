@@ -103,6 +103,15 @@ scoring:
   # Minimum score to include in digest (out of 100+bonus)
   min_score: 40
 
+  # Minimum annual salary — jobs with disclosed salary below this are hard-filtered.
+  # Jobs with no salary info are always kept. Amounts are rounded approximations of 2.4M CZK.
+  min_salary:
+    CZK: 2400000
+    EUR: 95000
+    USD: 100000
+    GBP: 80000
+    PLN: 400000
+
 # --- Output ---
 output:
   max_jobs_in_digest: 0    # 0 = no limit, include all that pass min_score

@@ -90,6 +90,13 @@ def run(dry_run: bool = False, sources_only: bool = False) -> None:
     filtered = [j for j in scored_jobs if j.score >= min_score]
     logger.info("After filtering (score >= %d): %d jobs", min_score, len(filtered))
 
+    # ── 4b. Filter by minimum salary (only when salary is disclosed) ──
+    min_salary_cfg = config["scoring"].get("min_salary", {})
+    if min_salary_cfg:
+        before = len(filtered)
+        filtered = [j for j in filtered if _salary_above_minimum(j, min_salary_cfg)]
+        logger.info("After salary filter: %d jobs (%d removed)", len(filtered), before - len(filtered))
+
     # ── 5. Sort by score descending ──
     filtered.sort(key=lambda j: j.score, reverse=True)
 
@@ -117,6 +124,21 @@ def run(dry_run: bool = False, sources_only: bool = False) -> None:
         else:
             logger.error("Pipeline complete but all output channels failed!")
             sys.exit(1)
+
+
+def _salary_above_minimum(job: Job, min_salary: dict) -> bool:
+    """Return True if the job passes the minimum salary filter.
+
+    Jobs with no disclosed salary are always kept — we can't disqualify what we don't know.
+    Only filters when salary_max is present and currency is in our threshold map.
+    """
+    if not job.salary_max or not job.salary_currency:
+        return True
+    currency = job.salary_currency.strip().upper()
+    threshold = min_salary.get(currency)
+    if threshold is None:
+        return True  # unknown currency — keep the job
+    return job.salary_max >= threshold
 
 
 def _print_source_summary(jobs: list[Job]) -> None:
