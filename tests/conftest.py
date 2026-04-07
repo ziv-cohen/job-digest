@@ -11,11 +11,12 @@ def scoring_cfg():
     return {
         "title_match": {
             "max_points": 30,
+            "founding_cto": 30,
+            "exact_cto": 27,
             "exact_vp": 30,
             "exact_director": 30,
             "exact_senior_em": 25,
             "exact_em": 18,
-            "founding_cto": 28,
             "partial_match": 10,
         },
         "location_fit": {
@@ -38,6 +39,8 @@ def scoring_cfg():
         },
         "seniority": {
             "max_points": 15,
+            "cto_level": 15,
+            "vp_level": 15,
             "director_level": 15,
             "senior_manager": 12,
             "manager": 8,

@@ -67,7 +67,6 @@ _TITLE_PATTERNS = {
         r"co-?founder.*cto",
         r"cto.*co-?found",
         r"cto.*early\s+stage",
-        r"chief\s+technology\s+officer",
     ],
 }
 
@@ -94,13 +93,13 @@ def _score_title(job: Job, cfg: dict) -> float:
 
     for pattern in _TITLE_PATTERNS["founding_cto"]:
         if re.search(pattern, title_lower):
-            job.seniority = job.seniority or "director"
+            job.seniority = job.seniority or "cto"
             return title_cfg["founding_cto"]
 
-    # Standalone CTO
+    # Standalone CTO (established company, not founding)
     if re.search(r"\bcto\b", title_lower) or "chief technology" in title_lower:
-        job.seniority = job.seniority or "director"
-        return title_cfg["founding_cto"]
+        job.seniority = job.seniority or "cto"
+        return title_cfg["exact_cto"]
 
     for pattern in _TITLE_PATTERNS["senior_em"]:
         if re.search(pattern, title_lower):
@@ -220,7 +219,11 @@ def _score_seniority(job: Job, cfg: dict) -> float:
     seniority = job.seniority.lower() if job.seniority else ""
 
     # May have been set during title scoring
-    if seniority in ("director", "vp"):
+    if seniority == "cto":
+        return sen_cfg["cto_level"]
+    if seniority == "vp":
+        return sen_cfg["vp_level"]
+    if seniority == "director":
         return sen_cfg["director_level"]
     if seniority == "senior_manager":
         return sen_cfg["senior_manager"]
@@ -229,9 +232,12 @@ def _score_seniority(job: Job, cfg: dict) -> float:
 
     # Infer from title if not yet set
     title_lower = job.title.lower()
+    if re.search(r"\bcto\b", title_lower) or "chief technology" in title_lower:
+        job.seniority = "cto"
+        return sen_cfg["cto_level"]
     if any(kw in title_lower for kw in ["vp ", "vice president"]):
         job.seniority = "vp"
-        return sen_cfg["director_level"]
+        return sen_cfg["vp_level"]
     if any(kw in title_lower for kw in ["director", "head of", "chief"]):
         job.seniority = "director"
         return sen_cfg["director_level"]

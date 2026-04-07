@@ -52,11 +52,12 @@ search:
 scoring:
   title_match:
     max_points: 30
-    exact_vp: 30           # VP Engineering / Head of Engineering (above director)
+    founding_cto: 30       # Founding / co-founder CTO
+    exact_cto: 27          # Standalone CTO (established company)
+    exact_vp: 30           # VP Engineering
     exact_director: 30
     exact_senior_em: 25
-    exact_em: 18          # boosted if company shows growth signals
-    founding_cto: 28
+    exact_em: 18           # boosted if company shows growth signals
     partial_match: 10
 
   location_fit:
@@ -79,6 +80,8 @@ scoring:
 
   seniority:
     max_points: 15
+    cto_level: 15
+    vp_level: 15
     director_level: 15
     senior_manager: 12
     manager: 8
