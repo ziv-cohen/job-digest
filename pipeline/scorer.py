@@ -160,7 +160,7 @@ def _score_location(job: Job, cfg: dict) -> float:
         return loc_cfg["commute_2hr"]  # Czech cities are close enough for on-site
 
     # Cities within ~2hr by train — hybrid/remote only
-    cities_2hr = ["dresden", "breclav"]
+    cities_2hr = ["dresden"]
     if any(city in loc_lower for city in cities_2hr):
         if not job.is_remote:
             return loc_cfg["unclear_or_other"]
