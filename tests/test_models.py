@@ -15,6 +15,15 @@ def test_salary_range_min_and_max():
     job = make_job(salary_min=80000, salary_max=120000, salary_currency="GBP")
     assert job._salary_range() == "GBP 80,000 – 120,000"
 
+def test_salary_range_single_value_when_min_equals_max():
+    job = make_job(salary_min=91209, salary_max=91209, salary_currency="GBP")
+    assert job._salary_range() == "GBP 91,209"
+
+def test_salary_range_single_value_estimated():
+    job = make_job(salary_min=91209, salary_max=91209, salary_currency="GBP",
+                   salary_is_estimated=True)
+    assert job._salary_range() == "GBP 91,209 (estimated)"
+
 def test_salary_range_min_only():
     job = make_job(salary_min=80000, salary_currency="EUR")
     assert job._salary_range() == "EUR 80,000+"

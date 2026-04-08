@@ -68,11 +68,14 @@ class Job:
         }
 
     def _salary_range(self) -> str:
+        cur = self.salary_currency or ""
         if self.salary_min and self.salary_max:
-            cur = self.salary_currency or ""
-            text = f"{cur} {self.salary_min:,.0f} – {self.salary_max:,.0f}".strip()
+            if self.salary_min == self.salary_max:
+                text = f"{cur} {self.salary_min:,.0f}".strip()
+            else:
+                text = f"{cur} {self.salary_min:,.0f} – {self.salary_max:,.0f}".strip()
         elif self.salary_min:
-            text = f"{self.salary_currency or ''} {self.salary_min:,.0f}+".strip()
+            text = f"{cur} {self.salary_min:,.0f}+".strip()
         else:
             return ""
         return f"{text} (estimated)" if self.salary_is_estimated else text
