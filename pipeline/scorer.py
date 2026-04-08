@@ -68,6 +68,10 @@ _TITLE_PATTERNS = {
         r"cto.*co-?found",
         r"cto.*early\s+stage",
     ],
+    "cto": [
+        r"\bcto\b",
+        r"chief\s+technology\s+officer",
+    ],
 }
 
 
@@ -96,10 +100,10 @@ def _score_title(job: Job, cfg: dict) -> float:
             job.seniority = job.seniority or "cto"
             return title_cfg["founding_cto"]
 
-    # Standalone CTO (established company, not founding)
-    if re.search(r"\bcto\b", title_lower) or "chief technology" in title_lower:
-        job.seniority = job.seniority or "cto"
-        return title_cfg["exact_cto"]
+    for pattern in _TITLE_PATTERNS["cto"]:
+        if re.search(pattern, title_lower):
+            job.seniority = job.seniority or "cto"
+            return title_cfg["exact_cto"]
 
     for pattern in _TITLE_PATTERNS["senior_em"]:
         if re.search(pattern, title_lower):
@@ -232,7 +236,7 @@ def _score_seniority(job: Job, cfg: dict) -> float:
 
     # Infer from title if not yet set
     title_lower = job.title.lower()
-    if re.search(r"\bcto\b", title_lower) or "chief technology" in title_lower:
+    if any(re.search(p, title_lower) for p in _TITLE_PATTERNS["cto"]):
         job.seniority = "cto"
         return sen_cfg["cto_level"]
     if any(kw in title_lower for kw in ["vp ", "vice president"]):
