@@ -2,8 +2,9 @@
 
 Usage:
     python main.py                  # Run full pipeline
-    python main.py --dry-run        # Fetch + score, print results, don't email
+    python main.py --dry-run        # Fetch + score, print results, don't send
     python main.py --sources-only   # Fetch only, print raw counts
+    python main.py --resend         # Re-send digest from dry_run_results.json (no API calls)
 """
 
 from __future__ import annotations
@@ -48,6 +49,28 @@ SOURCES = [
     ("StartupJobs.cz", startupjobs.fetch_jobs),
     ("LinkedIn Email Alerts", linkedin_email.fetch_jobs),
 ]
+
+
+def resend() -> None:
+    """Re-send the digest from the last dry_run_results.json without fetching."""
+    config = load_config(Path(__file__).resolve().parent)
+    cache_path = Path(__file__).resolve().parent / "dry_run_results.json"
+    if not cache_path.exists():
+        logger.error("No cache found at %s — run with --dry-run first.", cache_path)
+        sys.exit(1)
+    with open(cache_path) as f:
+        jobs = [Job.from_dict(d) for d in json.load(f)]
+    logger.info("Loaded %d jobs from cache — sending digest.", len(jobs))
+    tg_token = config.get("telegram", {}).get("bot_token", "")
+    if tg_token and not tg_token.startswith("YOUR_"):
+        sent = send_telegram_digest(jobs, config)
+    else:
+        sent = send_email_digest(jobs, config)
+    if sent:
+        logger.info("Digest re-sent with %d jobs.", len(jobs))
+    else:
+        logger.error("All output channels failed!")
+        sys.exit(1)
 
 
 def run(dry_run: bool = False, sources_only: bool = False) -> None:
@@ -177,10 +200,14 @@ def _print_dry_run(jobs: list[Job]) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Job Digest Pipeline")
-    parser.add_argument("--dry-run", action="store_true", help="Fetch and score but don't send email")
+    parser.add_argument("--dry-run", action="store_true", help="Fetch and score but don't send")
     parser.add_argument("--sources-only", action="store_true", help="Fetch only, show counts per source")
+    parser.add_argument("--resend", action="store_true", help="Re-send digest from dry_run_results.json (no API calls)")
     args = parser.parse_args()
-    run(dry_run=args.dry_run, sources_only=args.sources_only)
+    if args.resend:
+        resend()
+    else:
+        run(dry_run=args.dry_run, sources_only=args.sources_only)
 
 
 if __name__ == "__main__":

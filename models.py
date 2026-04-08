@@ -67,6 +67,31 @@ class Job:
             "has_growth_signals": self.has_growth_signals,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Job":
+        """Reconstruct a Job from a to_dict() payload (e.g. dry_run_results.json)."""
+        date_posted = None
+        if d.get("date_posted"):
+            date_posted = datetime.fromisoformat(d["date_posted"])
+        return cls(
+            title=d["title"],
+            company=d["company"],
+            url=d["url"],
+            source=d["source"],
+            location=d.get("location", ""),
+            is_remote=d.get("is_remote", False),
+            remote_region=d.get("remote_region", ""),
+            date_posted=date_posted,
+            salary_text=d.get("salary_text", ""),
+            employment_type=d.get("employment_type", ""),
+            seniority=d.get("seniority", ""),
+            company_type=d.get("company_type", ""),
+            job_type=d.get("job_type", ""),
+            score=d.get("score", 0.0),
+            score_breakdown=d.get("score_breakdown", {}),
+            has_growth_signals=d.get("has_growth_signals", False),
+        )
+
     def _salary_range(self) -> str:
         cur = self.salary_currency or ""
         if self.salary_min and self.salary_max:
