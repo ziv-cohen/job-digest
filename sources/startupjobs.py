@@ -1,128 +1,145 @@
-"""StartupJobs.cz source — lightweight scraping of public job listings."""
+"""StartupJobs.cz source — JSON API (Czech startup job board)."""
 
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import requests
-from bs4 import BeautifulSoup
 
 from models import Job
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.startupjobs.cz"
-SEARCH_URL = f"{BASE_URL}/nabidky"
+API_URL = f"{BASE_URL}/api/offers"
 
-# English site variant
-EN_BASE_URL = "https://www.startupjobs.cz/en"
-EN_SEARCH_URL = f"{EN_BASE_URL}/offers"
+# All company types on StartupJobs are product/startup companies by definition
+_COMPANY_TYPE = "product"
+
+# Map companyType → is_startup flag for growth signal hints
+_STARTUP_TYPES = {"start", "growth"}
+
+# Pages to fetch per query (20 results/page)
+_MAX_PAGES = 2
+
+_SEARCH_QUERIES = [
+    "engineering manager",
+    "CTO",
+    "director of engineering",
+    "head of engineering",
+    "VP engineering",
+]
 
 
 def fetch_jobs(config: dict[str, Any]) -> list[Job]:
-    """Fetch management/director roles from StartupJobs.cz."""
-    search = config["search"]
-    max_age = search["max_age_days"]
+    max_age = config["search"]["max_age_days"]
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age)
 
-    title_keywords = [t.lower() for t in search["role_titles"]]
-    # Additional CZ-market keywords
-    title_keywords.extend([
-        "engineering director", "engineering manager", "head of engineering",
-        "vp engineering", "cto", "chief technology officer",
-        "ředitel", "vedoucí",  # Czech equivalents
-    ])
-
     all_jobs: list[Job] = []
+    seen_ids: set[int] = set()
 
-    # Try the English search page with management/leadership filters
-    search_queries = [
-        "engineering director",
-        "engineering manager",
-        "CTO",
-        "head of engineering",
-    ]
+    for query in _SEARCH_QUERIES:
+        for page in range(1, _MAX_PAGES + 1):
+            try:
+                resp = requests.get(
+                    API_URL,
+                    params={"q": query, "page": page, "limit": 20},
+                    headers={"Accept": "application/json"},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except requests.RequestException as exc:
+                logger.error("StartupJobs.cz request failed for query=%r page=%d: %s", query, page, exc)
+                break
 
-    for query in search_queries:
-        try:
-            # StartupJobs.cz uses query params for search
-            params = {"q": query}
-            headers = {
-                "User-Agent": "Mozilla/5.0 (compatible; JobDigest/1.0; personal use)",
-                "Accept-Language": "en,cs;q=0.9",
-            }
-            resp = requests.get(EN_SEARCH_URL, params=params, headers=headers, timeout=15)
-            resp.raise_for_status()
+            items = data.get("resultSet", [])
+            if not items:
+                break
 
-            soup = BeautifulSoup(resp.text, "html.parser")
-            job_cards = soup.select("article, .offer, [data-offer], .job-card, .listing")
+            for item in items:
+                job_id = item.get("id")
+                if job_id in seen_ids:
+                    continue
+                seen_ids.add(job_id)
 
-            for card in job_cards:
-                job = _parse_card(card, query)
+                job = _parse_item(item, cutoff)
                 if job:
                     all_jobs.append(job)
 
-            logger.info("StartupJobs.cz: query=%r found %d cards", query, len(job_cards))
+            paginator = data.get("paginator", {})
+            if page >= paginator.get("max", 1):
+                break
 
-        except requests.RequestException as exc:
-            logger.error("StartupJobs.cz request failed for query=%r: %s", query, exc)
+        logger.info("StartupJobs.cz: query=%r → %d jobs so far", query, len(all_jobs))
 
-    # Deduplicate within source by URL
-    seen_urls: set[str] = set()
-    unique_jobs = []
-    for job in all_jobs:
-        if job.url not in seen_urls:
-            seen_urls.add(job.url)
-            unique_jobs.append(job)
-
-    return unique_jobs
+    return all_jobs
 
 
-def _parse_card(card, query: str) -> Job | None:
-    """Parse a single job card element from StartupJobs.cz HTML."""
-    try:
-        # Try to find the title link
-        title_el = card.select_one("h2 a, h3 a, .title a, a[href*='/nabidka'], a[href*='/offer']")
-        if not title_el:
-            title_el = card.select_one("a")
-        if not title_el:
-            return None
-
-        title = title_el.get_text(strip=True)
-        href = title_el.get("href", "")
-        if href and not href.startswith("http"):
-            href = BASE_URL + href
-
-        # Company
-        company_el = card.select_one(".company, .company-name, [class*='company']")
-        company = company_el.get_text(strip=True) if company_el else ""
-
-        # Location
-        location_el = card.select_one(".location, [class*='location'], [class*='place']")
-        location = location_el.get_text(strip=True) if location_el else "Prague, CZ"
-
-        # Check for remote indicators
-        card_text = card.get_text().lower()
-        is_remote = any(kw in card_text for kw in ["remote", "práce z domova", "home office"])
-
-        if not title or not href:
-            return None
-
-        return Job(
-            title=title,
-            company=company,
-            url=href,
-            source="startupjobs",
-            location=location,
-            is_remote=is_remote,
-            remote_region="" if not is_remote else "EMEA",
-            date_posted=datetime.now(timezone.utc),  # StartupJobs doesn't always show date
-            description=card_text[:1000],
-            company_type="product",  # StartupJobs focuses on startups = product companies
-        )
-    except Exception as exc:
-        logger.debug("Failed to parse StartupJobs card: %s", exc)
+def _parse_item(item: dict, cutoff: datetime) -> Job | None:
+    title = item.get("name", "").strip()
+    url_path = item.get("url", "")
+    if not title or not url_path:
         return None
+
+    url = url_path if url_path.startswith("http") else BASE_URL + url_path
+    company = item.get("company", "").strip()
+    location = _parse_location(item)
+    is_remote = bool(item.get("isRemote"))
+    salary_min, salary_max, currency = _parse_salary(item.get("salary"))
+
+    # Descriptions on StartupJobs are HTML; strip tags for growth signal detection
+    desc_html = item.get("description", "")
+    desc_text = _strip_html(desc_html)
+
+    return Job(
+        title=title,
+        company=company,
+        url=url,
+        source="startupjobs",
+        location=location,
+        is_remote=is_remote,
+        remote_region="EMEA" if is_remote else "",
+        date_posted=datetime.now(timezone.utc),  # API doesn't expose date
+        salary_min=salary_min,
+        salary_max=salary_max,
+        salary_currency=currency,
+        description=desc_text[:1000],
+        company_type=_COMPANY_TYPE,
+    )
+
+
+def _parse_location(item: dict) -> str:
+    raw = item.get("locations", "").strip()
+    if not raw or item.get("isRemote"):
+        return ""
+    # Normalise "Praha" → "Prague, CZ"; keep other Czech cities as-is
+    if raw.lower() in ("praha", "prague"):
+        return "Prague, CZ"
+    return f"{raw}, CZ"
+
+
+def _parse_salary(salary: dict | None) -> tuple[float | None, float | None, str]:
+    """Return (min, max, currency). Converts monthly → annual."""
+    if not salary:
+        return None, None, ""
+    try:
+        sal_min = float(salary["min"]) if salary.get("min") else None
+        sal_max = float(salary["max"]) if salary.get("max") else None
+        currency = salary.get("currency", "").upper()
+        if salary.get("measure") == "monthly":
+            if sal_min:
+                sal_min *= 12
+            if sal_max:
+                sal_max *= 12
+        return sal_min, sal_max, currency
+    except (KeyError, TypeError, ValueError):
+        return None, None, ""
+
+
+def _strip_html(html: str) -> str:
+    """Remove HTML tags for plain-text description."""
+    import re
+    return re.sub(r"<[^>]+>", " ", html).strip()
