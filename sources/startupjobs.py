@@ -32,6 +32,12 @@ _SEARCH_QUERIES = [
     "VP engineering",
 ]
 
+# Title must contain at least one of these to be considered relevant.
+# Prevents the API's broad text matching from returning e.g. "Head of Sales".
+_TITLE_KEYWORDS = [
+    "engineering", "cto", "chief technology", "vp eng", "vice president eng",
+]
+
 
 def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     max_age = config["search"]["max_age_days"]
@@ -82,6 +88,10 @@ def _parse_item(item: dict, cutoff: datetime) -> Job | None:
     title = item.get("name", "").strip()
     url_path = item.get("url", "")
     if not title or not url_path:
+        return None
+
+    title_lower = title.lower()
+    if not any(kw in title_lower for kw in _TITLE_KEYWORDS):
         return None
 
     url = url_path if url_path.startswith("http") else BASE_URL + url_path

@@ -114,6 +114,18 @@ def test_parse_item_missing_title_returns_none():
     job = _parse_item(item, cutoff=__import__('datetime').datetime(2000, 1, 1, tzinfo=timezone.utc))
     assert job is None
 
+def test_parse_item_irrelevant_title_filtered_out():
+    from datetime import timezone
+    item = _make_item(name="Head of Sales (hands-on) - B2B SaaS")
+    job = _parse_item(item, cutoff=__import__('datetime').datetime(2000, 1, 1, tzinfo=timezone.utc))
+    assert job is None
+
+def test_parse_item_cto_title_passes():
+    from datetime import timezone
+    item = _make_item(name="CTO / Co-Founder")
+    job = _parse_item(item, cutoff=__import__('datetime').datetime(2000, 1, 1, tzinfo=timezone.utc))
+    assert job is not None
+
 
 # ── fetch_jobs ───────────────────────────────────────────────────
 

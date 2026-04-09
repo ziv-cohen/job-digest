@@ -242,7 +242,7 @@ def _score_seniority(job: Job, cfg: dict) -> float:
     if any(kw in title_lower for kw in ["vp ", "vice president"]):
         job.seniority = "vp"
         return sen_cfg["vp_level"]
-    if any(kw in title_lower for kw in ["director", "head of", "chief"]):
+    if any(kw in title_lower for kw in ["director", "head of engineering", "chief"]):
         job.seniority = "director"
         return sen_cfg["director_level"]
     if "senior" in title_lower and "manager" in title_lower:
