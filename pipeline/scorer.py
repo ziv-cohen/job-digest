@@ -75,9 +75,16 @@ _TITLE_PATTERNS = {
 }
 
 
+_EXCLUDED_DOMAINS = ["hardware", "mechanical", "electrical", "civil", "firmware"]
+
+
 def _score_title(job: Job, cfg: dict) -> float:
     title_cfg = cfg["title_match"]
     title_lower = job.title.lower()
+
+    # Hard-exclude non-software engineering domains
+    if any(kw in title_lower for kw in _EXCLUDED_DOMAINS):
+        return 0
 
     # Check each pattern group
     for pattern in _TITLE_PATTERNS["director"]:

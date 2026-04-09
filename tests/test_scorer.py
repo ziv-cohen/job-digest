@@ -131,6 +131,14 @@ def test_title_data_director_no_partial_match(scoring_cfg):
     job = make_job(title="Data Director")
     assert _score_title(job, scoring_cfg) == 0
 
+def test_title_hardware_excluded(scoring_cfg):
+    job = make_job(title="Global Hardware Engineering Director")
+    assert _score_title(job, scoring_cfg) == 0
+
+def test_title_electrical_excluded(scoring_cfg):
+    job = make_job(title="Associate Director - Electrical Engineering")
+    assert _score_title(job, scoring_cfg) == 0
+
 def test_title_no_match(scoring_cfg):
     job = make_job(title="Product Manager")
     assert _score_title(job, scoring_cfg) == 0
