@@ -121,6 +121,16 @@ def test_title_partial_match_tech_and_lead(scoring_cfg):
     job = make_job(title="Platform Engineering Lead")
     assert _score_title(job, scoring_cfg) == 10
 
+def test_title_data_director_no_match(scoring_cfg):
+    # "data" alone is no longer a tech keyword — prevents "HR Data Director" matching
+    job = make_job(title="HR Data Director")
+    assert _score_title(job, scoring_cfg) == 0
+
+def test_title_data_director_no_partial_match(scoring_cfg):
+    # "data" removed from partial_kw — not a target domain
+    job = make_job(title="Data Director")
+    assert _score_title(job, scoring_cfg) == 0
+
 def test_title_no_match(scoring_cfg):
     job = make_job(title="Product Manager")
     assert _score_title(job, scoring_cfg) == 0

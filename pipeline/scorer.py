@@ -119,7 +119,7 @@ def _score_title(job: Job, cfg: dict) -> float:
             return min(score, title_cfg["max_points"])
 
     # Partial match — title contains relevant keywords but not exact
-    partial_kw = ["engineering", "platform", "infrastructure", "data", "backend"]
+    partial_kw = ["engineering", "platform", "infrastructure", "backend"]
     leader_kw = ["manager", "director", "lead", "head", "vp", "chief"]
     has_tech = any(kw in title_lower for kw in partial_kw)
     has_leader = any(kw in title_lower for kw in leader_kw)

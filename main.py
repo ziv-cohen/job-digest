@@ -14,7 +14,7 @@ import io
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 # Force UTF-8 output on Windows (avoids cp1252 errors with non-ASCII job data)
@@ -108,10 +108,13 @@ def run(dry_run: bool = False, sources_only: bool = False) -> None:
     # ── 3. Score ──
     scored_jobs = score_jobs(unique_jobs, config)
 
-    # ── 4. Filter by minimum score ──
+    # ── 4. Filter by minimum score and non-zero title score ──
     min_score = config["scoring"]["min_score"]
-    filtered = [j for j in scored_jobs if j.score >= min_score]
-    logger.info("After filtering (score >= %d): %d jobs", min_score, len(filtered))
+    filtered = [
+        j for j in scored_jobs
+        if j.score >= min_score and j.score_breakdown.get("title", 0) > 0
+    ]
+    logger.info("After filtering (score >= %d, title > 0): %d jobs", min_score, len(filtered))
 
     # ── 4b. Filter by minimum salary (only when salary is disclosed) ──
     min_salary_cfg = config["scoring"].get("min_salary", {})
