@@ -2,6 +2,10 @@
 config.local.yaml
 .env
 
+# Personal profile and LLM cache (never commit — deploy via PROFILE_SUMMARY env var)
+profile.md
+profile_match_cache.json
+
 # Build artifacts
 __pycache__/
 *.pyc
