@@ -13,21 +13,29 @@ logger = logging.getLogger(__name__)
 
 
 def score_jobs(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
-    """Score each job and attach breakdown. Returns all jobs (filtered later)."""
+    """Score each job and attach breakdown. Returns all jobs (filtered later).
+
+    Each category scorer returns 0-100 directly (config values are pre-scaled).
+    The weighted total (also 0-100) is computed from config["scoring"]["weights"],
+    which must sum to 100.
+    """
     scoring_cfg = config["scoring"]
+    weights = scoring_cfg["weights"]
+
     for job in jobs:
-        # Pre-compute enrichment flags used by multiple scorers and the digest output
+        # Pre-compute enrichment flag used by title scorer and digest output
         job.has_growth_signals = _has_growth_signals(f"{job.title} {job.description}".lower())
 
-        breakdown = {}
+        breakdown: dict[str, float] = {}
+        breakdown["profile_match"] = 0.0  # placeholder; populated by profile_matcher
         breakdown["title"] = _score_title(job, scoring_cfg)
         breakdown["location"] = _score_location(job, scoring_cfg)
         breakdown["company_type"] = _score_company_type(job, scoring_cfg)
         breakdown["seniority"] = _score_seniority(job, scoring_cfg)
         breakdown["freshness"] = _score_freshness(job, scoring_cfg)
-        breakdown["bonus"] = _score_bonus(job, scoring_cfg)
+        breakdown["conditions"] = _score_conditions(job, scoring_cfg)
 
-        job.score = sum(breakdown.values())
+        job.score = sum(breakdown[cat] * weights[cat] / 100 for cat in weights)
         job.score_breakdown = breakdown
 
     logger.info("Scoring complete: min=%.1f, max=%.1f, mean=%.1f",
@@ -84,9 +92,8 @@ def _score_title(job: Job, cfg: dict) -> float:
 
     # Hard-exclude non-software engineering domains
     if any(kw in title_lower for kw in _EXCLUDED_DOMAINS):
-        return 0
+        return 0.0
 
-    # Check each pattern group
     for pattern in _TITLE_PATTERNS["director"]:
         if re.search(pattern, title_lower):
             job.seniority = job.seniority or "director"
@@ -122,8 +129,8 @@ def _score_title(job: Job, cfg: dict) -> float:
             job.seniority = job.seniority or "manager"
             score = title_cfg["exact_em"]
             if job.has_growth_signals:
-                score += 5  # boost EM at a fast-growing company
-            return min(score, title_cfg["max_points"])
+                score = min(score + title_cfg["em_growth_boost"], 100.0)
+            return score
 
     # Partial match — title contains relevant keywords but not exact
     partial_kw = ["engineering", "platform", "infrastructure", "backend"]
@@ -133,7 +140,7 @@ def _score_title(job: Job, cfg: dict) -> float:
     if has_tech and has_leader:
         return title_cfg["partial_match"]
 
-    return 0
+    return 0.0
 
 
 # ── Location fit ────────────────────────────────────────────────
@@ -146,9 +153,7 @@ def _score_location(job: Job, cfg: dict) -> float:
     prague_indicators = ["prague", "praha"]
     is_prague = any(p in loc_lower for p in prague_indicators)
 
-    if is_prague and not job.is_remote:
-        return loc_cfg["prague_onsite_hybrid"]
-    if is_prague and job.is_remote:
+    if is_prague:
         return loc_cfg["prague_onsite_hybrid"]  # Prague + remote = best of both
 
     # EMEA remote
@@ -160,7 +165,7 @@ def _score_location(job: Job, cfg: dict) -> float:
         return loc_cfg["worldwide_remote"]
 
     # Czech Republic (not Prague)
-    czech_indicators = ["czech", "česk", "brno", "plzen", "plzeň", "kutna hora", "kutná hora"]
+    czech_indicators = ["czech", "\u010desk", "brno", "plzen", "plze\u0148", "kutna hora", "kutn\u00e1 hora"]
     if any(c in loc_lower for c in czech_indicators):
         if job.is_remote:
             return loc_cfg["czech_remote"]
@@ -285,28 +290,28 @@ def _score_freshness(job: Job, cfg: dict) -> float:
     return fresh_cfg["four_to_seven_days"]
 
 
-# ── Bonus ───────────────────────────────────────────────────────
+# ── Conditions ──────────────────────────────────────────────────
 
-def _score_bonus(job: Job, cfg: dict) -> float:
-    bonus_cfg = cfg["bonus"]
+def _score_conditions(job: Job, cfg: dict) -> float:
+    cond_cfg = cfg["conditions"]
     text = f"{job.title} {job.description}".lower()
-    bonus = 0.0
+    score = 0.0
 
     # Freelancer-friendly
-    freelance_kw = ["freelance", "contractor", "contract", "b2b", "self-employed", "ičo", "živnost"]
+    freelance_kw = ["freelance", "contractor", "contract", "b2b", "self-employed", "i\u010do", "\u017eivnost"]
     if any(kw in text for kw in freelance_kw):
         job.job_type = job.job_type or "freelancer"
-        bonus += bonus_cfg["freelancer_friendly"]
+        score += cond_cfg["freelancer_friendly"]
 
     # Salary mentioned
     if job.salary_min or job.salary_max or job.salary_text:
-        bonus += bonus_cfg["salary_mentioned"]
+        score += cond_cfg["salary_mentioned"]
 
     # Growth signals (pre-computed in score_jobs)
     if job.has_growth_signals:
-        bonus += bonus_cfg["growth_signals"]
+        score += cond_cfg["growth_signals"]
 
-    return bonus
+    return min(score, 100.0)
 
 
 def _has_growth_signals(text: str) -> bool:

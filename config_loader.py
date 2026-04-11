@@ -68,4 +68,11 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
                 node = node.setdefault(part, {})
             node[path[-1]] = int(value) if value.isdigit() else value
 
+    # Validate scoring weights sum to 100
+    weights = config.get("scoring", {}).get("weights", {})
+    if weights:
+        total = sum(weights.values())
+        if total != 100:
+            raise ValueError(f"Scoring weights must sum to 100, got {total}: {weights}")
+
     return config
