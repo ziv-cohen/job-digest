@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 MAX_MESSAGE_LENGTH = 4096  # Telegram hard limit per message
 
+_BREAKDOWN_LABELS: dict[str, str] = {
+    "profile_match": "Profile",
+    "title": "Title",
+    "location": "Loc",
+    "company_type": "Co",
+    "seniority": "Level",
+    "freshness": "Fresh",
+    "conditions": "Cond",
+}
+
 
 def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
     """Send ranked jobs as one or more Telegram messages."""
@@ -33,7 +43,8 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
         logger.info("No jobs to send — skipping Telegram digest.")
         return True
 
-    messages = _build_messages(jobs)
+    weights = config.get("scoring", {}).get("weights", {})
+    messages = _build_messages(jobs, weights)
     url = TELEGRAM_API_URL.format(token=bot_token)
 
     for i, text in enumerate(messages, 1):
@@ -53,10 +64,17 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
     return True
 
 
-def _build_messages(jobs: list[Job]) -> list[str]:
+def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None) -> list[str]:
     """Build a list of messages, splitting if content exceeds Telegram's limit."""
     now = datetime.now().strftime("%d %b %Y, %H:%M")
     header = f"<b>Job Digest — {now}</b>\n{len(jobs)} matches\n"
+    if weights:
+        weight_parts = [
+            f"{_BREAKDOWN_LABELS[cat]} {w}%"
+            for cat, w in weights.items()
+            if cat in _BREAKDOWN_LABELS and w
+        ]
+        header += f"<i>Weights: {' · '.join(weight_parts)}</i>\n"
 
     job_blocks = [_format_job(i, job) for i, job in enumerate(jobs, 1)]
 
@@ -105,14 +123,26 @@ def _format_job(rank: int, job: Job) -> str:
         else:
             date = job.date_posted.strftime("%d %b")
 
+    breakdown_parts = []
+    if job.score_breakdown:
+        for cat, label in _BREAKDOWN_LABELS.items():
+            score = job.score_breakdown.get(cat)
+            if score is None or score == 0.0:
+                continue
+            breakdown_parts.append(f"{label} {round(score)}")
+
     lines = [
-        f"\n<b>#{rank} [{job.score:.0f} pts] <a href=\"{job.url}\">{job.title}</a></b>",
+        f"\n<b>#{rank} [{job.score:.0f}%] <a href=\"{job.url}\">{job.title}</a></b>",
         f"🏢 {job.company}",
         f"📍 {location}",
         f"💰 {salary}",
     ]
     if meta:
         lines.append(f"🏷 {meta}")
+    if breakdown_parts:
+        lines.append(f"📊 {' · '.join(breakdown_parts)}")
+    if job.profile_match_rationale:
+        lines.append(f"🤖 {job.profile_match_rationale}")
     lines.append(f"🕐 {date} · {job.source.title()}")
 
     return "\n".join(lines) + "\n"

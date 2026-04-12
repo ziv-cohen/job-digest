@@ -7,6 +7,17 @@ from models import Job
 from output.telegram_digest import send_digest, _build_messages, _format_job
 
 
+_WEIGHTS = {
+    "profile_match": 45,
+    "title": 15,
+    "location": 15,
+    "company_type": 10,
+    "seniority": 5,
+    "freshness": 5,
+    "conditions": 5,
+}
+
+
 def make_job(**kwargs) -> Job:
     defaults = dict(
         title="Engineering Director",
@@ -14,7 +25,15 @@ def make_job(**kwargs) -> Job:
         url="https://example.com/job/1",
         source="jsearch",
         score=75.0,
-        score_breakdown={"title": 30, "location": 25, "freshness": 10, "bonus": 5, "company_type": 5},
+        score_breakdown={
+            "profile_match": 80.0,
+            "title": 100.0,
+            "location": 100.0,
+            "company_type": 100.0,
+            "seniority": 100.0,
+            "freshness": 70.0,
+            "conditions": 0.0,
+        },
         date_posted=datetime.now(timezone.utc) - timedelta(hours=2),
         has_growth_signals=False,
     )
@@ -22,7 +41,10 @@ def make_job(**kwargs) -> Job:
 
 
 def _make_config(bot_token="123:ABC", chat_id="456"):
-    return {"telegram": {"bot_token": bot_token, "chat_id": chat_id}}
+    return {
+        "telegram": {"bot_token": bot_token, "chat_id": chat_id},
+        "scoring": {"weights": _WEIGHTS},
+    }
 
 
 # ── _format_job ──────────────────────────────────────────────────
@@ -35,7 +57,7 @@ def test_format_job_contains_title():
 def test_format_job_contains_score():
     job = make_job(score=75.0)
     result = _format_job(1, job)
-    assert "75" in result
+    assert "75%" in result
 
 def test_format_job_contains_url():
     job = make_job(url="https://example.com/apply")
@@ -67,6 +89,30 @@ def test_format_job_salary_not_disclosed():
     job = make_job(salary_text="", salary_min=None, salary_max=None)
     result = _format_job(1, job)
     assert "Not disclosed" in result
+
+def test_format_job_breakdown_line_shown():
+    job = make_job()
+    result = _format_job(1, job)
+    assert "📊" in result
+    assert "Profile" in result
+    assert "Title" in result
+
+def test_format_job_breakdown_omits_zero_score():
+    # conditions score=0 → omitted from breakdown line
+    job = make_job()
+    result = _format_job(1, job)
+    assert "Cond" not in result
+
+def test_format_job_rationale_shown_when_present():
+    job = make_job(profile_match_rationale="Strong Director match, EMEA remote")
+    result = _format_job(1, job)
+    assert "🤖" in result
+    assert "Strong Director match" in result
+
+def test_format_job_rationale_hidden_when_empty():
+    job = make_job(profile_match_rationale="")
+    result = _format_job(1, job)
+    assert "🤖" not in result
 
 def test_format_job_today_label():
     job = make_job(date_posted=datetime.now(timezone.utc) - timedelta(hours=1))
