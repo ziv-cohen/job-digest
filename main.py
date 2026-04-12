@@ -108,13 +108,15 @@ def run(dry_run: bool = False, sources_only: bool = False) -> None:
     # ── 3. Score ──
     scored_jobs = score_jobs(unique_jobs, config)
 
-    # ── 4. Filter by minimum score and non-zero title score ──
+    # ── 4. Filter by minimum score, non-zero title, and profile match ──
     min_score = config["scoring"]["min_score"]
     filtered = [
         j for j in scored_jobs
-        if j.score >= min_score and j.score_breakdown.get("title", 0) > 0
+        if j.score >= min_score
+        and j.score_breakdown.get("title", 0) > 0
+        and j.score_breakdown.get("profile_match", 50) > 0  # 0 = explicit LLM reject
     ]
-    logger.info("After filtering (score >= %d, title > 0): %d jobs", min_score, len(filtered))
+    logger.info("After filtering (score >= %d, title > 0, profile_match > 0): %d jobs", min_score, len(filtered))
 
     # ── 4b. Filter by minimum salary (only when salary is disclosed) ──
     min_salary_cfg = config["scoring"].get("min_salary", {})
@@ -198,6 +200,8 @@ def _print_dry_run(jobs: list[Job]) -> None:
         print(f"     URL:      {job.url}")
         breakdown = " | ".join(f"{k}: {v:.0f}" for k, v in job.score_breakdown.items() if v > 0)
         print(f"     Score:    {breakdown}")
+        if job.profile_match_rationale:
+            print(f"     Profile:  {job.profile_match_rationale}")
         print()
 
 
