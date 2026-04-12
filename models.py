@@ -45,6 +45,7 @@ class Job:
     score_breakdown: dict = field(default_factory=dict)
     dedup_key: str = ""                  # generated during dedup
     has_growth_signals: bool = False     # set during scoring, shown in digest
+    profile_match_rationale: str = ""   # one-line LLM rationale, shown in digest
 
     def to_dict(self) -> dict:
         """Serialise for JSON / email template."""
@@ -65,6 +66,7 @@ class Job:
             "score": round(self.score, 1),
             "score_breakdown": self.score_breakdown,
             "has_growth_signals": self.has_growth_signals,
+            "profile_match_rationale": self.profile_match_rationale,
         }
 
     @classmethod
@@ -90,6 +92,7 @@ class Job:
             score=d.get("score", 0.0),
             score_breakdown=d.get("score_breakdown", {}),
             has_growth_signals=d.get("has_growth_signals", False),
+            profile_match_rationale=d.get("profile_match_rationale", ""),
         )
 
     def _salary_range(self) -> str:

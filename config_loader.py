@@ -59,6 +59,9 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
         "SENDER_EMAIL": ("email", "sender_email"),
         "SENDER_PASSWORD": ("email", "sender_password"),
         "RECIPIENT_EMAIL": ("email", "recipient_email"),
+        "ANTHROPIC_API_KEY": ("anthropic", "api_key"),
+        "PROFILE_SUMMARY": ("profile_matcher", "profile_summary"),
+        "PROFILE_MATCH_CACHE_PATH": ("profile_matcher", "cache_path"),
     }
     for env_var, path in env_map.items():
         value = os.environ.get(env_var)

@@ -390,10 +390,11 @@ def test_score_jobs_sets_score_and_breakdown(full_config):
     assert "conditions" in job.score_breakdown
     assert "profile_match" in job.score_breakdown
 
-def test_score_jobs_profile_match_defaults_to_zero(full_config):
+def test_score_jobs_profile_match_uses_fallback_when_unconfigured(full_config):
+    # full_config has no anthropic section — match_profile degrades to fallback_score (50)
     jobs = [make_job(title="Engineering Director")]
     score_jobs(jobs, full_config)
-    assert jobs[0].score_breakdown["profile_match"] == 0.0
+    assert jobs[0].score_breakdown["profile_match"] == 50.0
 
 def test_score_jobs_score_is_0_to_100(full_config):
     jobs = [make_job(

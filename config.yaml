@@ -48,6 +48,17 @@ search:
   # Max job age in days — older jobs are discarded entirely
   max_age_days: 7
 
+# --- Anthropic / LLM settings ---
+anthropic:
+  api_key: "YOUR_ANTHROPIC_KEY"
+  model: "claude-haiku-4-5-20251001"
+
+# --- Profile matcher ---
+profile_matcher:
+  profile_summary: "YOUR_PROFILE_SUMMARY"  # set via PROFILE_SUMMARY env var
+  cache_path: "profile_match_cache.json"   # override to /data/... on Railway
+  fallback_score: 50                       # score used when API is unavailable (neutral mid-point)
+
 # --- Scoring weights (total = 100 points max) ---
 scoring:
   # Category weights — must sum to 100.
