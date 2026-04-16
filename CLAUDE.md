@@ -59,6 +59,7 @@ Can also run locally via Windows Task Scheduler.
 - All jobs normalize to the `Job` dataclass in `models.py`
 - Scoring weights are fully configurable in `config.yaml`
 - The pipeline is idempotent — safe to run multiple times per day
+- **README.md must be kept up to date.** Any commit that changes user-facing behaviour (new features, new env vars, changed scoring, new setup steps) must include a corresponding README update in the same commit.
 
 ## Testing
 - Every module with logic must have a corresponding `tests/test_<module>.py`

@@ -59,6 +59,9 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
         "SENDER_EMAIL": ("email", "sender_email"),
         "SENDER_PASSWORD": ("email", "sender_password"),
         "RECIPIENT_EMAIL": ("email", "recipient_email"),
+        "ANTHROPIC_API_KEY": ("anthropic", "api_key"),
+        "PROFILE_SUMMARY": ("profile_matcher", "profile_summary"),
+        "PROFILE_MATCH_CACHE_PATH": ("profile_matcher", "cache_path"),
     }
     for env_var, path in env_map.items():
         value = os.environ.get(env_var)
@@ -67,5 +70,12 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
             for part in path[:-1]:
                 node = node.setdefault(part, {})
             node[path[-1]] = int(value) if value.isdigit() else value
+
+    # Validate scoring weights sum to 100
+    weights = config.get("scoring", {}).get("weights", {})
+    if weights:
+        total = sum(weights.values())
+        if total != 100:
+            raise ValueError(f"Scoring weights must sum to 100, got {total}: {weights}")
 
     return config

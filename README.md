@@ -14,7 +14,7 @@ Every morning (or on demand):
 
 1. **Fetches** jobs from multiple sources (JSearch/Google Jobs, Adzuna, Remotive, StartupJobs.cz)
 2. **Deduplicates** using fuzzy title+company matching across sources
-3. **Scores** each job on a 100-point scale based on your criteria (role, location, company type, seniority, freshness)
+3. **Scores** each job 0-100 using configurable weighted categories (role, location, company type, seniority, freshness, conditions) — plus an optional LLM-based profile match score
 4. **Filters** out jobs below your minimum score and older than N days
 5. **Delivers** a ranked digest to Telegram or email
 
@@ -47,7 +47,8 @@ job-digest/
 │
 ├── pipeline/
 │   ├── deduplicator.py      # Fuzzy deduplication (82% similarity threshold)
-│   └── scorer.py            # 100-point scoring engine
+│   ├── scorer.py            # Weighted scoring engine (0-100 per category)
+│   └── profile_matcher.py   # LLM-based profile match scoring (Claude Haiku)
 │
 ├── output/
 │   ├── telegram_digest.py   # Sends ranked digest via Telegram Bot API
@@ -64,18 +65,19 @@ job-digest/
 
 ## Scoring system
 
-Each job is scored out of 100 (+ up to 8 bonus points). All weights are configurable in `config.yaml`.
+Each job is scored 0-100 using a weighted sum of categories. All weights and per-category values are configurable in `config.yaml`.
 
-| Dimension | Max pts | Key signals |
-|-----------|---------|-------------|
-| **Title match** | 30 | "Engineering Director", "Sr. EM", "EM", "Founding CTO" |
-| **Location fit** | 25 | EMEA remote = Prague on-site (25), Czech remote (20), commute tiers |
-| **Company type** | 20 | Product company (20), outsourcing (15), consulting (8) |
-| **Seniority** | 15 | Director (15), Senior Manager (12), Manager (8) |
-| **Freshness** | 10 | Today (10), yesterday (7), 2-3 days (4), 4-7 days (2) |
-| **Bonus** | +8 | Growth signals, salary disclosed, freelancer-friendly |
+| Category | Default weight | Key signals |
+|----------|---------------|-------------|
+| **Profile match** | 45% | LLM-based fit against your `profile.md` (Claude Haiku) |
+| **Title match** | 15% | "Engineering Director", "Sr. EM", "EM", "Founding CTO" |
+| **Location fit** | 15% | Prague / EMEA remote (100), Czech remote (80), commute tiers |
+| **Company type** | 10% | Product company (100), outsourcing (75), consulting (40) |
+| **Seniority** | 5% | Director/CTO/VP (100), Senior Manager (80), Manager (55) |
+| **Freshness** | 5% | Today (100), yesterday (70), 2-3 days (40), 4-7 days (20) |
+| **Conditions** | 5% | Growth signals, salary disclosed, freelancer-friendly |
 
-Jobs older than `max_age_days` (default: 7) are hard-filtered before scoring.
+Weights must sum to 100 (validated at startup). Jobs older than `max_age_days` (default: 7) are hard-filtered before scoring. Jobs where `profile_match = 0` are hard-filtered regardless of total score.
 
 ## Getting started
 
@@ -124,7 +126,49 @@ telegram:
 
 Alternatively, configure `email` in `config.local.yaml` to use SMTP delivery instead.
 
-### 4. Customize for yourself
+### 4. Set up your candidate profile (optional but recommended)
+
+The profile matcher uses Claude to score each job against your background. Without it, all jobs get a neutral profile score (50) and the pipeline still works.
+
+**Local setup:**
+
+```bash
+cp profile.example.md profile.md   # profile.md is gitignored
+# Edit profile.md — fill in your Summary and Full Background sections
+```
+
+**Get an Anthropic API key:**
+1. Sign up at [platform.claude.com](https://platform.claude.com/)
+2. In the left sidebar, click **Manage** → **API Keys** → **Create Key**
+3. Add credits: **Settings → Billing** — the API requires a paid balance even for Haiku (a $5 top-up lasts a long time)
+4. The profile matcher uses Claude Haiku — very cheap (roughly $0.001 per job scored)
+
+Then add to `config.local.yaml`:
+
+```yaml
+anthropic:
+  api_key: "your-anthropic-key"
+
+profile_matcher:
+  profile_summary: |
+    Senior engineering leader with 20 years experience...
+    Target roles: Engineering Director, VP Engineering...
+    Location: Prague or EMEA remote...
+```
+
+**For deployment (Railway, Cloud Run, etc.):**
+
+Set these environment variables instead of using `config.local.yaml`:
+
+| Variable | Value |
+|----------|-------|
+| `ANTHROPIC_API_KEY` | Your Anthropic API key |
+| `PROFILE_SUMMARY` | Contents of the `## Summary` section from your `profile.md` |
+| `PROFILE_MATCH_CACHE_PATH` | `/data/profile_match_cache.json` (persistent volume path) |
+
+The `profile.md` file itself stays local — never committed, never deployed.
+
+### 6. Customize for yourself
 
 Edit `config.yaml` (or override in `config.local.yaml`) to match your search criteria:
 
@@ -143,7 +187,7 @@ search:
 
 Adjust scoring weights, location tiers, and bonus signals in the `scoring:` section to reflect what matters to you.
 
-### 5. Run it
+### 7. Run it
 
 ```bash
 # Fetch, score, print results — no message sent (recommended for first run)
@@ -199,6 +243,9 @@ All config values can be set as environment variables (useful for deployment wit
 | `EMAIL_SENDER` | `email.sender_email` |
 | `EMAIL_PASSWORD` | `email.sender_password` |
 | `EMAIL_RECIPIENT` | `email.recipient_email` |
+| `ANTHROPIC_API_KEY` | `anthropic.api_key` |
+| `PROFILE_SUMMARY` | `profile_matcher.profile_summary` |
+| `PROFILE_MATCH_CACHE_PATH` | `profile_matcher.cache_path` |
 
 ## Adding a new source
 
@@ -227,7 +274,7 @@ python -m pytest tests/ -q
 python -m pytest tests/ -v
 ```
 
-The test suite (212 tests) runs fully offline — all external APIs and SMTP are mocked. Tests are enforced before every commit via a pre-commit hook.
+The test suite runs fully offline — all external APIs and SMTP are mocked. Tests are enforced before every commit via a pre-commit hook.
 
 ## Tech stack
 
@@ -236,6 +283,7 @@ The test suite (212 tests) runs fully offline — all external APIs and SMTP are
 - `pyyaml` — config loading
 - `beautifulsoup4` — HTML scraping (StartupJobs)
 - `pytest` + `pytest-mock` — testing
+- `anthropic` — Claude Haiku API for profile match scoring
 - **Telegram Bot API** — digest delivery
 - **Docker** — containerised deployment
 
@@ -243,7 +291,7 @@ The test suite (212 tests) runs fully offline — all external APIs and SMTP are
 
 See the [issue tracker](https://github.com/ziv-cohen/job-digest/issues) for planned improvements, including:
 
-- Profile match scoring via LLM (cross-reference job requirements with your CV)
+- ~~Profile match scoring via LLM~~ — shipped ✓
 - Hybrid job detection
 - Email delivery alongside Telegram
 - Additional sources (LinkedIn, Greenhouse, Lever)

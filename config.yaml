@@ -48,59 +48,79 @@ search:
   # Max job age in days — older jobs are discarded entirely
   max_age_days: 7
 
+# --- Anthropic / LLM settings ---
+anthropic:
+  api_key: "YOUR_ANTHROPIC_KEY"
+  model: "claude-haiku-4-5-20251001"
+
+# --- Profile matcher ---
+profile_matcher:
+  profile_summary: "YOUR_PROFILE_SUMMARY"  # set via PROFILE_SUMMARY env var
+  cache_path: "profile_match_cache.json"   # override to /data/... on Railway
+  fallback_score: 50                       # score used when API is unavailable (neutral mid-point)
+
 # --- Scoring weights (total = 100 points max) ---
 scoring:
+  # Category weights — must sum to 100.
+  # profile_match defaults to 0 until pipeline/profile_matcher.py is wired in.
+  weights:
+    profile_match: 45
+    title: 15
+    location: 15
+    company_type: 10
+    seniority: 5
+    freshness: 5
+    conditions: 5           # freelancer-friendly, salary disclosed, growth signals
+
+  # All category values are direct scores (0–100).
+  # Scores > 100 in conditions are capped at 100.
+
   title_match:
-    max_points: 30
-    founding_cto: 30       # Founding / co-founder CTO
-    exact_cto: 27          # Standalone CTO (established company)
-    exact_vp: 30           # VP Engineering
-    exact_director: 30
-    exact_senior_em: 25
-    exact_em: 18           # boosted if company shows growth signals
-    partial_match: 10
+    founding_cto: 100      # Founding / co-founder CTO
+    exact_cto: 90          # Standalone CTO (established company)
+    exact_vp: 100          # VP Engineering
+    exact_director: 100
+    exact_senior_em: 85
+    exact_em: 60           # boosted by em_growth_boost if company shows growth signals
+    em_growth_boost: 15
+    partial_match: 35
 
   location_fit:
-    max_points: 25
-    prague_onsite_hybrid: 25
-    emea_remote: 25        # same as Prague — higher salaries compensate
-    worldwide_remote: 22   # remote but region unspecified — slight discount for uncertainty
-    czech_remote: 20
-    commute_2hr: 12
-    commute_4hr: 6
-    generic_remote: 10     # API-tagged remote but no region info at all
+    prague_onsite_hybrid: 100
+    emea_remote: 100       # same as Prague — higher salaries compensate
+    worldwide_remote: 90   # remote but region unspecified — slight discount for uncertainty
+    czech_remote: 80       # Czech salaries are lower than West Europe, so for remote - Czech is in lower priority
+    commute_2hr: 50
+    commute_4hr: 25
+    generic_remote: 40     # API-tagged remote but no region info at all
     unclear_or_other: 0    # unknown location — no points awarded
 
   company_type:
-    max_points: 20
-    product_company: 20
-    outsourcing: 15
-    consulting: 8
+    product_company: 100
+    outsourcing: 75
+    consulting: 40
     unknown: 0             # unknown company type — no points awarded
 
   seniority:
-    max_points: 15
-    cto_level: 15
-    vp_level: 15
-    director_level: 15
-    senior_manager: 12
-    manager: 8
+    cto_level: 100
+    vp_level: 100
+    director_level: 100
+    senior_manager: 80
+    manager: 55
     unclear: 0             # unclear seniority — no points awarded
 
   freshness:
-    max_points: 10
-    today: 10
-    yesterday: 7
-    two_to_three_days: 4
-    four_to_seven_days: 2
+    today: 100
+    yesterday: 70
+    two_to_three_days: 40
+    four_to_seven_days: 20
 
-  # Bonus points (added on top of 100)
-  bonus:
-    freelancer_friendly: 3
-    salary_mentioned: 2
-    growth_signals: 3       # "series A/B/C", "fast-growing", "scaling", "hypergrowth"
+  conditions:
+    freelancer_friendly: 40  # "freelance", "contractor", "B2B", "IČO"
+    salary_mentioned: 25     # any salary info disclosed
+    growth_signals: 35       # "series A/B/C", "fast-growing", "scaling", "hypergrowth"
 
-  # Minimum score to include in digest (out of 100+bonus)
+  # Minimum score to include in digest (out of 100)
   min_score: 40
 
   # Minimum annual salary — jobs with disclosed salary below this are hard-filtered.
