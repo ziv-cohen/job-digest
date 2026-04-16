@@ -136,6 +136,7 @@ scoring:
 output:
   max_jobs_in_digest: 0    # 0 = no limit, include all that pass min_score
   sort_by: "score_desc"    # always descending by score
+  timezone: "Europe/Prague"  # IANA timezone for digest timestamps (override via DIGEST_TIMEZONE env var)
 
 # --- Schedule ---
 schedule:

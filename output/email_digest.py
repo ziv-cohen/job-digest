@@ -8,6 +8,7 @@ from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from models import Job
 
@@ -22,11 +23,19 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
         logger.info("No jobs to send — skipping digest.")
         return True
 
-    html = _build_html(jobs)
-    plain = _build_plain(jobs)
+    tz_name = config.get("output", {}).get("timezone", "UTC")
+    try:
+        tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        logger.warning("Unknown timezone '%s' — falling back to UTC", tz_name)
+        tz = ZoneInfo("UTC")
+    now = datetime.now(tz)
+
+    html = _build_html(jobs, now)
+    plain = _build_plain(jobs, now)
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Job Digest — {len(jobs)} matches ({datetime.now().strftime('%d %b %Y')})"
+    msg["Subject"] = f"Job Digest — {len(jobs)} matches ({now.strftime('%d %b %Y')})"
     msg["From"] = email_cfg["sender_email"]
     msg["To"] = email_cfg["recipient_email"]
 
@@ -46,9 +55,9 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
         return False
 
 
-def _build_html(jobs: list[Job]) -> str:
+def _build_html(jobs: list[Job], now: datetime | None = None) -> str:
     """Generate the HTML email body."""
-    today = datetime.now().strftime("%A, %d %B %Y")
+    today = (now or datetime.now()).strftime("%A, %d %B %Y")
 
     rows = ""
     for i, job in enumerate(jobs, 1):
@@ -162,9 +171,9 @@ def _build_html(jobs: list[Job]) -> str:
 </html>"""
 
 
-def _build_plain(jobs: list[Job]) -> str:
+def _build_plain(jobs: list[Job], now: datetime | None = None) -> str:
     """Generate plain-text fallback."""
-    lines = [f"Job Digest — {len(jobs)} matches ({datetime.now().strftime('%d %b %Y')})", "=" * 60, ""]
+    lines = [f"Job Digest — {len(jobs)} matches ({(now or datetime.now()).strftime('%d %b %Y')})", "=" * 60, ""]
 
     for i, job in enumerate(jobs, 1):
         loc = job.location or "N/A"

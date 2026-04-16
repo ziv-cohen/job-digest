@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 
@@ -44,7 +45,8 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
         return True
 
     weights = config.get("scoring", {}).get("weights", {})
-    messages = _build_messages(jobs, weights)
+    tz_name = config.get("output", {}).get("timezone", "UTC")
+    messages = _build_messages(jobs, weights, tz_name)
     url = TELEGRAM_API_URL.format(token=bot_token)
 
     for i, text in enumerate(messages, 1):
@@ -64,9 +66,15 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
     return True
 
 
-def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None) -> list[str]:
+def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None,
+                    tz_name: str = "UTC") -> list[str]:
     """Build a list of messages, splitting if content exceeds Telegram's limit."""
-    now = datetime.now().strftime("%d %b %Y, %H:%M")
+    try:
+        tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        logger.warning("Unknown timezone '%s' — falling back to UTC", tz_name)
+        tz = ZoneInfo("UTC")
+    now = datetime.now(tz).strftime("%d %b %Y, %H:%M")
     header = f"<b>Job Digest — {now}</b>\n{len(jobs)} matches\n"
     if weights:
         weight_parts = [

@@ -83,7 +83,13 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
     config = load_config(Path(__file__).resolve().parent)
 
     logger.info("=" * 60)
-    logger.info("Job Digest Pipeline — %s", datetime.now().strftime("%Y-%m-%d %H:%M"))
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    tz_name = config.get("output", {}).get("timezone", "UTC")
+    try:
+        _tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        _tz = ZoneInfo("UTC")
+    logger.info("Job Digest Pipeline — %s", datetime.now(_tz).strftime("%Y-%m-%d %H:%M %Z"))
     logger.info("=" * 60)
 
     # ── 1. Fetch from all sources (or load from cache) ──
