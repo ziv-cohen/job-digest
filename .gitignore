@@ -22,6 +22,7 @@ env/
 
 # Test and runtime artifacts
 dry_run_results.json
+fetched_jobs.json
 .pytest_cache/
 .coverage
 htmlcov/

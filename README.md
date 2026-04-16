@@ -140,7 +140,8 @@ cp profile.example.md profile.md   # profile.md is gitignored
 **Get an Anthropic API key:**
 1. Sign up at [platform.claude.com](https://platform.claude.com/)
 2. In the left sidebar, click **Manage** → **API Keys** → **Create Key**
-3. The profile matcher uses Claude Haiku — very cheap (roughly $0.001 per job scored)
+3. Add credits: **Settings → Billing** — the API requires a paid balance even for Haiku (a $5 top-up lasts a long time)
+4. The profile matcher uses Claude Haiku — very cheap (roughly $0.001 per job scored)
 
 Then add to `config.local.yaml`:
 

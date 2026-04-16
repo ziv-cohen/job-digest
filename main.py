@@ -29,7 +29,8 @@ from config_loader import load_config
 from models import Job
 from sources import jsearch, adzuna, remotive, startupjobs, linkedin_email
 from pipeline.deduplicator import deduplicate
-from pipeline.scorer import score_jobs
+from pipeline.scorer import score_jobs, recompute_scores
+from pipeline.profile_matcher import match_profile
 from output.email_digest import send_digest as send_email_digest
 from output.telegram_digest import send_digest as send_telegram_digest
 
@@ -38,6 +39,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("main")
 
 # ── Source registry ────────────────────────────────────────────
@@ -73,26 +75,38 @@ def resend() -> None:
         sys.exit(1)
 
 
-def run(dry_run: bool = False, sources_only: bool = False) -> None:
+FETCH_CACHE_PATH = Path(__file__).resolve().parent / "fetched_jobs.json"
+
+
+def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = False) -> None:
     """Execute the full pipeline."""
     config = load_config(Path(__file__).resolve().parent)
 
-    # ── 1. Fetch from all sources ──
     logger.info("=" * 60)
     logger.info("Job Digest Pipeline — %s", datetime.now().strftime("%Y-%m-%d %H:%M"))
     logger.info("=" * 60)
 
-    all_jobs: list[Job] = []
-    for name, fetcher in SOURCES:
-        logger.info("Fetching from %s …", name)
-        try:
-            jobs = fetcher(config)
-            logger.info("  → %d jobs fetched", len(jobs))
-            all_jobs.extend(jobs)
-        except Exception as exc:
-            logger.error("  → FAILED: %s", exc)
+    # ── 1. Fetch from all sources (or load from cache) ──
+    if score_only:
+        if not FETCH_CACHE_PATH.exists():
+            logger.error("No fetch cache found at %s — run without --score-only first.", FETCH_CACHE_PATH)
+            sys.exit(1)
+        with open(FETCH_CACHE_PATH) as f:
+            all_jobs = [Job.from_dict(d) for d in json.load(f)]
+        logger.info("Loaded %d jobs from fetch cache (skipping fetch).", len(all_jobs))
+    else:
+        all_jobs = []
+        for name, fetcher in SOURCES:
+            logger.info("Fetching from %s …", name)
+            try:
+                jobs = fetcher(config)
+                logger.info("  → %d jobs fetched", len(jobs))
+                all_jobs.extend(jobs)
+            except Exception as exc:
+                logger.error("  → FAILED: %s", exc)
 
-    logger.info("Total raw jobs: %d", len(all_jobs))
+        logger.info("Total raw jobs: %d", len(all_jobs))
+        _save_fetch_cache(all_jobs)
 
     if sources_only:
         _print_source_summary(all_jobs)
@@ -105,25 +119,34 @@ def run(dry_run: bool = False, sources_only: bool = False) -> None:
     # ── 2. Deduplicate ──
     unique_jobs = deduplicate(all_jobs, config)
 
-    # ── 3. Score ──
+    # ── 3. Rule-based scoring ──
     scored_jobs = score_jobs(unique_jobs, config)
 
-    # ── 4. Filter by minimum score, non-zero title, and profile match ──
+    # ── 4. Title filter (cheap — runs before expensive LLM calls) ──
+    after_title = [j for j in scored_jobs if j.score_breakdown.get("title", 0) > 0]
+    logger.info("Title filter: %d jobs in → %d pass (%d removed)",
+                len(scored_jobs), len(after_title), len(scored_jobs) - len(after_title))
+
+    # ── 5. Profile match (LLM — only on title-passing jobs) ──
+    match_profile(after_title, config)
+    recompute_scores(after_title, config)
+
+    # ── 6. Profile match and min score filters ──
     min_score = config["scoring"]["min_score"]
-    filtered = [
-        j for j in scored_jobs
-        if j.score >= min_score
-        and j.score_breakdown.get("title", 0) > 0
-        and j.score_breakdown.get("profile_match", 50) > 0  # 0 = explicit LLM reject
-    ]
-    logger.info("After filtering (score >= %d, title > 0, profile_match > 0): %d jobs", min_score, len(filtered))
+    after_profile = [j for j in after_title if j.score_breakdown.get("profile_match", 50) > 0]
+    logger.info("Profile match filter: %d jobs in → %d pass (%d removed)",
+                len(after_title), len(after_profile), len(after_title) - len(after_profile))
+    filtered = [j for j in after_profile if j.score >= min_score]
+    logger.info("Min score filter: %d jobs in → %d pass (%d removed, threshold %d%%)",
+                len(after_profile), len(filtered), len(after_profile) - len(filtered), min_score)
 
     # ── 4b. Filter by minimum salary (only when salary is disclosed) ──
     min_salary_cfg = config["scoring"].get("min_salary", {})
     if min_salary_cfg:
         before = len(filtered)
         filtered = [j for j in filtered if _salary_above_minimum(j, min_salary_cfg)]
-        logger.info("After salary filter: %d jobs (%d removed)", len(filtered), before - len(filtered))
+        logger.info("Salary filter: %d jobs in → %d pass (%d removed)",
+                    before, len(filtered), before - len(filtered))
 
     # ── 5. Sort by score descending ──
     filtered.sort(key=lambda j: j.score, reverse=True)
@@ -169,6 +192,12 @@ def _salary_above_minimum(job: Job, min_salary: dict) -> bool:
     return job.salary_max >= threshold
 
 
+def _save_fetch_cache(jobs: list[Job]) -> None:
+    with open(FETCH_CACHE_PATH, "w") as f:
+        json.dump([j.to_dict() for j in jobs], f, indent=2, default=str)
+    logger.info("Fetch cache saved to %s", FETCH_CACHE_PATH)
+
+
 def _print_source_summary(jobs: list[Job]) -> None:
     """Print count per source."""
     from collections import Counter
@@ -190,7 +219,7 @@ def _print_dry_run(jobs: list[Job]) -> None:
         region_tag = f" ({job.remote_region})" if job.remote_region else ""
         salary = job.salary_text or job._salary_range() or "Not disclosed"
 
-        print(f"#{i:2d}  [{job.score:5.1f} pts]  {job.title}")
+        print(f"#{i:2d}  [{job.score:5.1f}%]  {job.title}")
         print(f"     Company:  {job.company}")
         print(f"     Location: {job.location}{remote_tag}{region_tag}")
         print(f"     Salary:   {salary}")
@@ -209,12 +238,13 @@ def main():
     parser = argparse.ArgumentParser(description="Job Digest Pipeline")
     parser.add_argument("--dry-run", action="store_true", help="Fetch and score but don't send")
     parser.add_argument("--sources-only", action="store_true", help="Fetch only, show counts per source")
+    parser.add_argument("--score-only", action="store_true", help="Skip fetch, load from fetched_jobs.json cache")
     parser.add_argument("--resend", action="store_true", help="Re-send digest from dry_run_results.json (no API calls)")
     args = parser.parse_args()
     if args.resend:
         resend()
     else:
-        run(dry_run=args.dry_run, sources_only=args.sources_only)
+        run(dry_run=args.dry_run, sources_only=args.sources_only, score_only=args.score_only)
 
 
 if __name__ == "__main__":

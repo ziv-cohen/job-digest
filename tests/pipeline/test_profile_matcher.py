@@ -73,6 +73,22 @@ def test_no_profile_summary_sets_fallback_score():
     match_profile(jobs, config)
     assert jobs[0].score_breakdown["profile_match"] == 50.0
 
+def test_no_api_key_still_uses_cache(tmp_path):
+    # Cache has a score for job1; API is disabled. job1 should use cached score, job2 fallback.
+    cache_file = tmp_path / "cache.json"
+    cache_file.write_text(json.dumps({
+        "https://example.com/job/1": {"score": 90, "rationale": "Great match", "model": "x", "cached_at": ""},
+    }))
+    config = make_config(api_key="YOUR_ANTHROPIC_KEY")
+    config["profile_matcher"]["cache_path"] = str(cache_file)
+
+    job1 = make_job(url="https://example.com/job/1")
+    job2 = make_job(url="https://example.com/job/2")
+    match_profile([job1, job2], config)
+
+    assert job1.score_breakdown["profile_match"] == 90.0   # from cache
+    assert job2.score_breakdown["profile_match"] == 50.0   # fallback
+
 def test_fallback_does_not_recompute_total():
     config = make_config(api_key="YOUR_ANTHROPIC_KEY")
     job = make_job()
@@ -150,45 +166,77 @@ def test_second_job_uses_cache_first_calls_api(tmp_path):
     assert job2.score_breakdown["profile_match"] == 60.0
 
 
+def test_api_error_not_cached(tmp_path):
+    cache_file = tmp_path / "cache.json"
+    config = make_config()
+    config["profile_matcher"]["cache_path"] = str(cache_file)
+
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = Exception("credit balance too low")
+
+    jobs = [make_job()]
+    with patch("pipeline.profile_matcher._make_client", return_value=mock_client):
+        match_profile(jobs, config)
+
+    assert jobs[0].score_breakdown["profile_match"] == 50.0  # fallback applied
+    assert not cache_file.exists()  # error must not be cached
+
+
 # ── _call_api ────────────────────────────────────────────────────
 
 def test_call_api_returns_score_and_rationale():
     mock_client = MagicMock()
     mock_client.messages.create.return_value = make_api_response(82, "Strong Director match")
     job = make_job()
-    score, rationale = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job, 50)
+    score, rationale, success = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job, 50)
     assert score == 82
     assert rationale == "Strong Director match"
+    assert success is True
 
 def test_call_api_clamps_score_above_100():
     mock_client = MagicMock()
     mock_client.messages.create.return_value = make_api_response(150, "Too high")
     job = make_job()
-    score, _ = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job)
+    score, _, success = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job)
     assert score == 100
+    assert success is True
 
 def test_call_api_clamps_score_below_zero():
     mock_client = MagicMock()
     mock_client.messages.create.return_value = make_api_response(-10, "Too low")
     job = make_job()
-    score, _ = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job)
+    score, _, success = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job)
     assert score == 0
+    assert success is True
 
 def test_call_api_defaults_to_neutral_on_error():
     mock_client = MagicMock()
     mock_client.messages.create.side_effect = Exception("API timeout")
     job = make_job()
-    score, rationale = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job, 50)
+    score, rationale, success = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job, 50)
     assert score == 50
     assert rationale == ""
+    assert success is False
 
 def test_call_api_defaults_to_neutral_on_invalid_json():
     mock_client = MagicMock()
     mock_client.messages.create.return_value.content[0].text = "not json"
     job = make_job()
-    score, rationale = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job, 50)
+    score, rationale, success = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job, 50)
     assert score == 50
     assert rationale == ""
+    assert success is False
+
+def test_call_api_handles_markdown_fenced_json():
+    mock_client = MagicMock()
+    mock_client.messages.create.return_value.content[0].text = (
+        '```json\n{"score": 15, "rationale": "Wrong domain"}\n```'
+    )
+    job = make_job()
+    score, rationale, success = _call_api(mock_client, "claude-haiku-4-5-20251001", "My profile", job, 50)
+    assert score == 15
+    assert rationale == "Wrong domain"
+    assert success is True
 
 
 # ── Breakdown mutation ───────────────────────────────────────────

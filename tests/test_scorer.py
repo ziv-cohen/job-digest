@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from models import Job
 from pipeline.scorer import (
     score_jobs,
+    recompute_scores,
     _score_title,
     _score_location,
     _score_company_type,
@@ -390,11 +391,11 @@ def test_score_jobs_sets_score_and_breakdown(full_config):
     assert "conditions" in job.score_breakdown
     assert "profile_match" in job.score_breakdown
 
-def test_score_jobs_profile_match_uses_fallback_when_unconfigured(full_config):
-    # full_config has no anthropic section — match_profile degrades to fallback_score (50)
+def test_score_jobs_profile_match_placeholder_is_zero(full_config):
+    # score_jobs only does rule-based scoring; profile_match stays 0 until match_profile() runs
     jobs = [make_job(title="Engineering Director")]
     score_jobs(jobs, full_config)
-    assert jobs[0].score_breakdown["profile_match"] == 50.0
+    assert jobs[0].score_breakdown["profile_match"] == 0.0
 
 def test_score_jobs_score_is_0_to_100(full_config):
     jobs = [make_job(
@@ -427,3 +428,13 @@ def test_score_jobs_em_boosted_by_growth(full_config):
 def test_score_jobs_empty_list(full_config):
     result = score_jobs([], full_config)
     assert result == []
+
+def test_recompute_scores_updates_total_after_profile_match(full_config):
+    jobs = [make_job(title="Engineering Director", seniority="director")]
+    score_jobs(jobs, full_config)
+    score_before = jobs[0].score  # profile_match=0 included in total
+
+    jobs[0].score_breakdown["profile_match"] = 100.0
+    recompute_scores(jobs, full_config)
+
+    assert jobs[0].score > score_before

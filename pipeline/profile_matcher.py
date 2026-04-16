@@ -50,45 +50,54 @@ def match_profile(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
     cache_path = Path(matcher_cfg.get("cache_path", "profile_match_cache.json"))
     fallback_score = float(matcher_cfg.get("fallback_score", 50))
 
-    # Graceful degradation — no API key or placeholder profile
     api_available = bool(api_key and not api_key.startswith("YOUR_"))
     profile_available = bool(profile_summary and not profile_summary.startswith("YOUR_"))
+    can_call_api = api_available and profile_available
 
-    if not api_available or not profile_available:
-        reason = "API key not configured" if not api_available else "profile summary not configured"
-        logger.warning("Profile matcher disabled (%s) — setting all profile_match scores to %.0f (fallback)",
-                       reason, fallback_score)
-        for job in jobs:
-            job.score_breakdown["profile_match"] = fallback_score
-        return jobs
-
-    # Load cache
+    # Load cache — used even when API is not configured
     cache = _load_cache(cache_path)
-    client = _make_client(api_key)
+    client = _make_client(api_key) if can_call_api else None
+
+    if not can_call_api:
+        reason = "API key not configured" if not api_available else "profile summary not configured"
+        logger.warning("Profile matcher disabled (%s) — cached scores used where available, others default to %.0f",
+                       reason, fallback_score)
+
+    cache_hits = sum(1 for job in jobs if job.url in cache)
+    api_total = len(jobs) - cache_hits if can_call_api else 0
+    if can_call_api and api_total:
+        logger.info("Profile matcher: %d from cache, %d to score via API", cache_hits, api_total)
+    elif cache_hits:
+        logger.info("Profile matcher: %d from cache, %d defaulting to %.0f (API unavailable)",
+                    cache_hits, len(jobs) - cache_hits, fallback_score)
 
     new_entries = 0
+    api_done = 0
     for job in jobs:
         if job.url in cache:
             entry = cache[job.url]
             job.score_breakdown["profile_match"] = float(entry["score"])
             job.profile_match_rationale = entry.get("rationale", "")
-            logger.debug("Cache hit for %s", job.url)
-        else:
-            score, rationale = _call_api(client, model, profile_summary, job, fallback_score)
+        elif can_call_api:
+            api_done += 1
+            logger.info("Scoring [%d/%d]: %s @ %s", api_done, api_total, job.title, job.company)
+            score, rationale, success = _call_api(client, model, profile_summary, job, fallback_score)
             job.score_breakdown["profile_match"] = float(score)
             job.profile_match_rationale = rationale
-            cache[job.url] = {
-                "score": score,
-                "rationale": rationale,
-                "model": model,
-                "cached_at": datetime.now(timezone.utc).isoformat(),
-            }
-            new_entries += 1
+            if success:
+                cache[job.url] = {
+                    "score": score,
+                    "rationale": rationale,
+                    "model": model,
+                    "cached_at": datetime.now(timezone.utc).isoformat(),
+                }
+                new_entries += 1
+        else:
+            job.score_breakdown["profile_match"] = fallback_score
 
     if new_entries:
         _save_cache(cache_path, cache)
-        logger.info("Profile matcher: scored %d new jobs, %d from cache",
-                    new_entries, len(jobs) - new_entries)
+        logger.info("Profile matcher: done — %d newly scored, %d from cache", new_entries, cache_hits)
     else:
         logger.info("Profile matcher: all %d jobs served from cache", len(jobs))
 
@@ -96,8 +105,12 @@ def match_profile(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
 
 
 def _call_api(client: Any, model: str, profile_summary: str, job: Job,
-              fallback_score: float = 50.0) -> tuple[int, str]:
-    """Call Claude API for a single job. Returns (score, rationale)."""
+              fallback_score: float = 50.0) -> tuple[int, str, bool]:
+    """Call Claude API for a single job. Returns (score, rationale, success).
+
+    On API or parse error, success=False and score=fallback_score. Callers
+    should not cache failed responses so a retry on the next run is possible.
+    """
     remote_tag = " (Remote)" if job.is_remote else ""
     salary = job.salary_text or "Not disclosed"
     description = (job.description or "")[:3000]
@@ -117,17 +130,28 @@ def _call_api(client: Any, model: str, profile_summary: str, job: Job,
             model=model,
             max_tokens=128,
             messages=[{"role": "user", "content": prompt}],
+            timeout=30,
         )
         raw = message.content[0].text.strip()
-        data = json.loads(raw)
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            logger.warning("Profile match bad JSON for '%s @ %s': %s — raw: %r",
+                           job.title, job.company, exc, raw[:200])
+            return int(fallback_score), "", False
         score = max(0, min(100, int(data["score"])))
         rationale = str(data.get("rationale", ""))[:80]
         logger.debug("Profile match for '%s @ %s': %d — %s", job.title, job.company, score, rationale)
-        return score, rationale
+        return score, rationale, True
     except Exception as exc:
         logger.warning("Profile match API error for '%s @ %s': %s — defaulting to %.0f (fallback)",
                        job.title, job.company, exc, fallback_score)
-        return int(fallback_score), ""
+        return int(fallback_score), "", False
 
 
 def _make_client(api_key: str) -> Any:

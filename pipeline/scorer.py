@@ -13,18 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def score_jobs(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
-    """Score each job and attach breakdown. Returns all jobs (filtered later).
-
-    Each category scorer returns 0-100 directly (config values are pre-scaled).
-    The weighted total (also 0-100) is computed from config["scoring"]["weights"],
-    which must sum to 100.
-
-    Profile match scoring (LLM-based) is included: all category breakdowns are
-    populated first, then profile_matcher fills breakdown["profile_match"] for all
-    jobs at once (with caching), then the single weighted sum is computed.
+    """Apply rule-based scorers to all jobs. profile_match is left at 0.0 —
+    call match_profile() then recompute_scores() on the filtered subset afterwards.
     """
-    from pipeline.profile_matcher import match_profile
-
     scoring_cfg = config["scoring"]
     weights = scoring_cfg["weights"]
 
@@ -33,7 +24,7 @@ def score_jobs(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
         job.has_growth_signals = _has_growth_signals(f"{job.title} {job.description}".lower())
 
         breakdown: dict[str, float] = {}
-        breakdown["profile_match"] = 0.0  # filled below by match_profile
+        breakdown["profile_match"] = 0.0  # filled later by match_profile
         breakdown["title"] = _score_title(job, scoring_cfg)
         breakdown["location"] = _score_location(job, scoring_cfg)
         breakdown["company_type"] = _score_company_type(job, scoring_cfg)
@@ -41,19 +32,23 @@ def score_jobs(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
         breakdown["freshness"] = _score_freshness(job, scoring_cfg)
         breakdown["conditions"] = _score_conditions(job, scoring_cfg)
         job.score_breakdown = breakdown
+        job.score = sum(breakdown[cat] * weights[cat] / 100 for cat in weights)
 
-    # Fill profile_match for all jobs (LLM API + cache), then compute weighted totals
-    match_profile(jobs, config)
+    return jobs
 
+
+def recompute_scores(jobs: list[Job], config: dict[str, Any]) -> None:
+    """Recompute job.score from the current breakdown values.
+
+    Call after match_profile() has filled breakdown["profile_match"].
+    """
+    weights = config["scoring"]["weights"]
     for job in jobs:
         job.score = sum(job.score_breakdown[cat] * weights[cat] / 100 for cat in weights)
-
     logger.info("Scoring complete: min=%.1f, max=%.1f, mean=%.1f",
                 min(j.score for j in jobs) if jobs else 0,
                 max(j.score for j in jobs) if jobs else 0,
                 sum(j.score for j in jobs) / len(jobs) if jobs else 0)
-
-    return jobs
 
 
 # ── Title match ─────────────────────────────────────────────────
