@@ -137,21 +137,25 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
     # ── 3. Rule-based scoring ──
     scored_jobs = score_jobs(unique_jobs, config)
 
-    # ── 4. Title filter (cheap — runs before expensive LLM calls) ──
+    # ── 4. Title + location filter (cheap — runs before expensive LLM calls) ──
     after_title = [j for j in scored_jobs if j.score_breakdown.get("title", 0) > 0]
     logger.info("Title filter: %d jobs in → %d pass (%d removed)",
                 len(scored_jobs), len(after_title), len(scored_jobs) - len(after_title))
 
-    # ── 5. Profile match (LLM — only on title-passing jobs) ──
-    match_profile(after_title, config)
-    recompute_scores(after_title, config)
+    after_location = [j for j in after_title if j.score_breakdown.get("location", 0) > 0]
+    logger.info("Location filter: %d jobs in → %d pass (%d removed)",
+                len(after_title), len(after_location), len(after_title) - len(after_location))
+
+    # ── 5. Profile match (LLM — only on title+location-passing jobs) ──
+    match_profile(after_location, config)
+    recompute_scores(after_location, config)
     llm_health = check_llm(config)
 
     # ── 6. Profile match and min score filters ──
     min_score = config["scoring"]["min_score"]
-    after_profile = [j for j in after_title if j.score_breakdown.get("profile_match", 50) > 0]
+    after_profile = [j for j in after_location if j.score_breakdown.get("profile_match", 50) > 0]
     logger.info("Profile match filter: %d jobs in → %d pass (%d removed)",
-                len(after_title), len(after_profile), len(after_title) - len(after_profile))
+                len(after_location), len(after_profile), len(after_location) - len(after_profile))
     filtered = [j for j in after_profile if j.score >= min_score]
     logger.info("Min score filter: %d jobs in → %d pass (%d removed, threshold %d%%)",
                 len(after_profile), len(filtered), len(after_profile) - len(filtered), min_score)
