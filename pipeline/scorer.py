@@ -180,21 +180,26 @@ def _score_location(job: Job, cfg: dict) -> float:
     cities_2hr = ["dresden"]
     if any(city in loc_lower for city in cities_2hr):
         if not job.is_remote:
-            return loc_cfg["unclear_or_other"]
+            return loc_cfg["distant_onsite"]
         return loc_cfg["commute_2hr"]
 
     # Cities within ~4hr by train — hybrid/remote only
     cities_4hr = ["ostrava", "wroclaw", "bratislava", "vienna", "wien", "berlin"]
     if any(city in loc_lower for city in cities_4hr):
         if not job.is_remote:
-            return loc_cfg["unclear_or_other"]
+            return loc_cfg["distant_onsite"]
         return loc_cfg["commute_4hr"]
 
     # API-tagged remote but no region info
     if job.is_remote:
         return loc_cfg["generic_remote"]
 
-    return loc_cfg["unclear_or_other"]
+    # Known location but not relevant (distant on-site city)
+    if loc_lower:
+        return loc_cfg["distant_onsite"]
+
+    # No location data at all — pass gracefully, let LLM and other signals decide
+    return loc_cfg["no_location_info"]
 
 
 # ── Company type ────────────────────────────────────────────────

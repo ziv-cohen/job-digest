@@ -93,7 +93,8 @@ scoring:
     commute_2hr: 50
     commute_4hr: 25
     generic_remote: 40     # API-tagged remote but no region info at all
-    unclear_or_other: 0    # unknown location — no points awarded
+    no_location_info: 15   # no location data at all — graceful pass, LLM decides
+    distant_onsite: 0      # known location, on-site only, not commutable from Prague
 
   company_type:
     product_company: 100

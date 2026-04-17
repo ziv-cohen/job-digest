@@ -218,15 +218,24 @@ def test_location_4hr_city_bratislava_hybrid(scoring_cfg):
 
 def test_location_beyond_4hr_scores_zero(scoring_cfg):
     job = make_job(location="Munich, Germany", is_remote=False)
-    assert _score_location(job, scoring_cfg) == 0
+    assert _score_location(job, scoring_cfg) == 0  # distant_onsite
 
 def test_location_generic_remote(scoring_cfg):
     job = make_job(location="", is_remote=True, remote_region="")
     assert _score_location(job, scoring_cfg) == 40
 
-def test_location_unclear(scoring_cfg):
+def test_location_distant_onsite_scores_zero(scoring_cfg):
     job = make_job(location="New York, US", is_remote=False)
-    assert _score_location(job, scoring_cfg) == 0
+    assert _score_location(job, scoring_cfg) == 0  # distant_onsite
+
+def test_location_no_location_info_scores_grace(scoring_cfg):
+    # No location and not remote — passes filter gracefully with low score
+    job = make_job(location="", is_remote=False)
+    assert _score_location(job, scoring_cfg) == 15  # no_location_info
+
+def test_location_none_scores_grace(scoring_cfg):
+    job = make_job(location=None, is_remote=False)
+    assert _score_location(job, scoring_cfg) == 15  # no_location_info
 
 
 # ── _score_company_type ──────────────────────────────────────────

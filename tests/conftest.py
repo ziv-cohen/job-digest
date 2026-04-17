@@ -36,7 +36,8 @@ def scoring_cfg():
             "commute_2hr": 50,
             "commute_4hr": 25,
             "generic_remote": 40,
-            "unclear_or_other": 0,
+            "no_location_info": 15,
+            "distant_onsite": 0,
         },
         "company_type": {
             "product_company": 100,
