@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import requests
 
 from models import Job
+from pipeline.health_check import HealthStatus
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,8 @@ _BREAKDOWN_LABELS: dict[str, str] = {
 }
 
 
-def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
+def send_digest(jobs: list[Job], config: dict[str, Any],
+                health: list[HealthStatus] | None = None) -> bool:
     """Send ranked jobs as one or more Telegram messages."""
     tg_cfg = config.get("telegram", {})
     bot_token = tg_cfg.get("bot_token", "")
@@ -46,7 +48,7 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
 
     weights = config.get("scoring", {}).get("weights", {})
     tz_name = config.get("output", {}).get("timezone", "UTC")
-    messages = _build_messages(jobs, weights, tz_name)
+    messages = _build_messages(jobs, weights, tz_name, health or [])
     url = TELEGRAM_API_URL.format(token=bot_token)
 
     for i, text in enumerate(messages, 1):
@@ -67,7 +69,8 @@ def send_digest(jobs: list[Job], config: dict[str, Any]) -> bool:
 
 
 def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None,
-                    tz_name: str = "UTC") -> list[str]:
+                    tz_name: str = "UTC",
+                    health: list[HealthStatus] | None = None) -> list[str]:
     """Build a list of messages, splitting if content exceeds Telegram's limit."""
     try:
         tz = ZoneInfo(tz_name)
@@ -96,6 +99,14 @@ def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None,
             current += block
     if current:
         messages.append(current)
+
+    if health:
+        parts = [
+            f"{'✅' if h.ok else '❌'} {h.name}" + (f" ({h.detail})" if not h.ok and h.detail else "")
+            for h in health
+        ]
+        footer = "\n\n<i>🏥 " + " · ".join(parts) + "</i>"
+        messages[-1] += footer
 
     return messages
 

@@ -31,6 +31,7 @@ from sources import jsearch, adzuna, remotive, startupjobs, linkedin_email
 from pipeline.deduplicator import deduplicate
 from pipeline.scorer import score_jobs, recompute_scores
 from pipeline.profile_matcher import match_profile
+from pipeline.health_check import HealthStatus, check_llm
 from output.email_digest import send_digest as send_email_digest
 from output.telegram_digest import send_digest as send_telegram_digest
 
@@ -93,6 +94,7 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
     logger.info("=" * 60)
 
     # ── 1. Fetch from all sources (or load from cache) ──
+    source_health: list[HealthStatus] = []
     if score_only:
         if not FETCH_CACHE_PATH.exists():
             logger.error("No fetch cache found at %s — run without --score-only first.", FETCH_CACHE_PATH)
@@ -102,14 +104,18 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
         logger.info("Loaded %d jobs from fetch cache (skipping fetch).", len(all_jobs))
     else:
         all_jobs = []
+        source_health: list[HealthStatus] = []
         for name, fetcher in SOURCES:
             logger.info("Fetching from %s …", name)
             try:
                 jobs = fetcher(config)
                 logger.info("  → %d jobs fetched", len(jobs))
                 all_jobs.extend(jobs)
+                source_health.append(HealthStatus(name=name, ok=True))
             except Exception as exc:
                 logger.error("  → FAILED: %s", exc)
+                source_health.append(HealthStatus(name=name, ok=False,
+                                                  detail=str(exc).split("\n")[0][:80]))
 
         logger.info("Total raw jobs: %d", len(all_jobs))
         _save_fetch_cache(all_jobs)
@@ -136,6 +142,7 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
     # ── 5. Profile match (LLM — only on title-passing jobs) ──
     match_profile(after_title, config)
     recompute_scores(after_title, config)
+    llm_health = check_llm(config)
 
     # ── 6. Profile match and min score filters ──
     min_score = config["scoring"]["min_score"]
@@ -163,8 +170,10 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
         filtered = filtered[:max_jobs]
 
     # ── 7. Output ──
+    health = (source_health if not score_only else []) + [llm_health]
+
     if dry_run:
-        _print_dry_run(filtered)
+        _print_dry_run(filtered, health)
         # Also save JSON for inspection
         output_path = Path(__file__).resolve().parent / "dry_run_results.json"
         with open(output_path, "w") as f:
@@ -173,7 +182,7 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
     else:
         tg_token = config.get("telegram", {}).get("bot_token", "")
         if tg_token and not tg_token.startswith("YOUR_"):
-            sent = send_telegram_digest(filtered, config)
+            sent = send_telegram_digest(filtered, config, health)
         else:
             sent = send_email_digest(filtered, config)
         if sent:
@@ -214,11 +223,15 @@ def _print_source_summary(jobs: list[Job]) -> None:
     print(f"  {'TOTAL':20s} {len(jobs):4d} jobs")
 
 
-def _print_dry_run(jobs: list[Job]) -> None:
+def _print_dry_run(jobs: list[Job], health: list[HealthStatus] | None = None) -> None:
     """Pretty-print scored jobs to stdout."""
     print(f"\n{'='*80}")
     print(f"DRY RUN RESULTS — {len(jobs)} jobs passing threshold")
     print(f"{'='*80}\n")
+    if health:
+        status_parts = [f"{'✅' if h.ok else '❌'} {h.name}" + (f" ({h.detail})" if not h.ok and h.detail else "")
+                        for h in health]
+        print(f"Health:  {' · '.join(status_parts)}\n")
 
     for i, job in enumerate(jobs, 1):
         remote_tag = " [Remote]" if job.is_remote else ""

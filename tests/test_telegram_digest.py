@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from models import Job
 from output.telegram_digest import send_digest, _build_messages, _format_job
+from pipeline.health_check import HealthStatus
 
 
 _WEIGHTS = {
@@ -123,6 +124,30 @@ def test_format_job_yesterday_label():
     job = make_job(date_posted=datetime.now(timezone.utc) - timedelta(hours=30))
     result = _format_job(1, job)
     assert "Yesterday" in result
+
+
+# ── Health footer ────────────────────────────────────────────────
+
+def test_build_messages_health_footer_shown():
+    jobs = [make_job()]
+    health = [HealthStatus("JSearch", ok=True), HealthStatus("LLM", ok=False, detail="no key")]
+    messages = _build_messages(jobs, health=health)
+    last = messages[-1]
+    assert "🏥" in last
+    assert "✅ JSearch" in last
+    assert "❌ LLM (no key)" in last
+
+def test_build_messages_no_health_footer_when_empty():
+    jobs = [make_job()]
+    messages = _build_messages(jobs, health=[])
+    assert "🏥" not in messages[-1]
+
+def test_build_messages_health_footer_omits_detail_when_ok():
+    jobs = [make_job()]
+    health = [HealthStatus("Adzuna", ok=True)]
+    messages = _build_messages(jobs, health=health)
+    assert "✅ Adzuna" in messages[-1]
+    assert "(" not in messages[-1].split("🏥")[1]
 
 
 # ── _build_messages ──────────────────────────────────────────────
