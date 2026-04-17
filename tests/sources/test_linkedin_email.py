@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from pipeline.health_check import SourceNotConfiguredError
 from sources.linkedin_email import (
     fetch_jobs,
     _get_html_body,
@@ -132,7 +133,7 @@ def test_parse_linkedin_alert_skips_short_titles():
 
 # ── fetch_jobs ───────────────────────────────────────────────────
 
-def test_fetch_jobs_skips_unconfigured_credentials():
+def test_fetch_jobs_raises_when_unconfigured_credentials():
     config = {
         "email": {
             "sender_email": "test@gmail.com",
@@ -140,9 +141,11 @@ def test_fetch_jobs_skips_unconfigured_credentials():
         },
         "search": {"max_age_days": 7},
     }
-    assert fetch_jobs(config) == []
+    import pytest
+    with pytest.raises(SourceNotConfiguredError):
+        fetch_jobs(config)
 
-def test_fetch_jobs_skips_empty_credentials():
+def test_fetch_jobs_raises_when_empty_credentials():
     config = {
         "email": {
             "sender_email": "",
@@ -150,4 +153,6 @@ def test_fetch_jobs_skips_empty_credentials():
         },
         "search": {"max_age_days": 7},
     }
-    assert fetch_jobs(config) == []
+    import pytest
+    with pytest.raises(SourceNotConfiguredError):
+        fetch_jobs(config)

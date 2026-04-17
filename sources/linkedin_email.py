@@ -25,8 +25,8 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     max_age = config["search"]["max_age_days"]
 
     if not sender_email or not sender_password or sender_password.startswith("YOUR_"):
-        logger.warning("Email credentials not configured — skipping LinkedIn alerts source.")
-        return []
+        from pipeline.health_check import SourceNotConfiguredError
+        raise SourceNotConfiguredError("Email credentials not configured")
 
     all_jobs: list[Job] = []
 

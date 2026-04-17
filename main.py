@@ -31,7 +31,7 @@ from sources import jsearch, adzuna, remotive, startupjobs, linkedin_email
 from pipeline.deduplicator import deduplicate
 from pipeline.scorer import score_jobs, recompute_scores
 from pipeline.profile_matcher import match_profile
-from pipeline.health_check import HealthStatus, check_llm
+from pipeline.health_check import HealthStatus, SourceNotConfiguredError, check_llm
 from output.email_digest import send_digest as send_email_digest
 from output.telegram_digest import send_digest as send_telegram_digest
 
@@ -112,6 +112,9 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
                 logger.info("  → %d jobs fetched", len(jobs))
                 all_jobs.extend(jobs)
                 source_health.append(HealthStatus(name=name, ok=True))
+            except SourceNotConfiguredError as exc:
+                logger.warning("  → SKIPPED: %s", exc)
+                # omitted from health report — inactive, not broken
             except Exception as exc:
                 logger.error("  → FAILED: %s", exc)
                 source_health.append(HealthStatus(name=name, ok=False,

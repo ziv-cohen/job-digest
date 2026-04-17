@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
+
+
+class SourceNotConfiguredError(Exception):
+    """Raised by a source's fetch_jobs() when required credentials are missing.
+
+    main.py catches this and omits the source from the health report entirely,
+    since a missing-config source is neither healthy nor broken — just inactive.
+    """
 
 
 @dataclass

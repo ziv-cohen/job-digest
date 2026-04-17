@@ -1,6 +1,6 @@
 """Unit tests for pipeline/health_check.py"""
 
-from pipeline.health_check import HealthStatus, check_llm
+from pipeline.health_check import HealthStatus, SourceNotConfiguredError, check_llm
 
 
 def _make_config(api_key="sk-real-key"):
@@ -39,3 +39,11 @@ def test_check_llm_empty_key():
 def test_check_llm_missing_section():
     h = check_llm({})
     assert h.ok is False
+
+
+# ── SourceNotConfiguredError ─────────────────────────────────────
+
+def test_source_not_configured_error_is_exception():
+    exc = SourceNotConfiguredError("Email credentials not configured")
+    assert isinstance(exc, Exception)
+    assert "Email" in str(exc)
