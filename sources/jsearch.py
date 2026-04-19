@@ -20,8 +20,8 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     """Query JSearch for each role_title × location combination."""
     api_key = config["api_keys"]["jsearch_rapidapi_key"]
     if not api_key or api_key.startswith("YOUR_"):
-        logger.warning("JSearch API key not configured — skipping source.")
-        return []
+        from pipeline.health_check import SourceNotConfiguredError
+        raise SourceNotConfiguredError("JSearch API key not configured")
 
     search = config["search"]
     role_titles = search["role_titles"]

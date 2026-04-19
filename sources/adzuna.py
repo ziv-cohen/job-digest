@@ -25,8 +25,8 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     app_id = config["api_keys"]["adzuna_app_id"]
     app_key = config["api_keys"]["adzuna_app_key"]
     if not app_id or app_id.startswith("YOUR_"):
-        logger.warning("Adzuna API key not configured — skipping source.")
-        return []
+        from pipeline.health_check import SourceNotConfiguredError
+        raise SourceNotConfiguredError("Adzuna API credentials not configured")
 
     search = config["search"]
     role_titles = search["role_titles"]

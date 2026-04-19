@@ -3,6 +3,9 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from pipeline.health_check import SourceNotConfiguredError
 from sources.adzuna import fetch_jobs, _parse_job, _country_to_currency
 
 
@@ -104,9 +107,10 @@ def test_parse_job_non_dict_company_returns_empty_string():
 
 # ── fetch_jobs ───────────────────────────────────────────────────
 
-def test_fetch_jobs_skips_missing_api_key():
+def test_fetch_jobs_raises_when_api_key_not_configured():
     config = _make_config(app_id="YOUR_ADZUNA_APP_ID")
-    assert fetch_jobs(config) == []
+    with pytest.raises(SourceNotConfiguredError):
+        fetch_jobs(config)
 
 
 def test_fetch_jobs_returns_recent_jobs():

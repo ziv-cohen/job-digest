@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from pipeline.health_check import SourceNotConfiguredError
 from sources.jsearch import fetch_jobs, _parse_job, _infer_remote_region
 
 
@@ -110,9 +111,10 @@ def _make_config(api_key="real-key"):
     }
 
 
-def test_fetch_jobs_skips_missing_api_key():
+def test_fetch_jobs_raises_when_api_key_not_configured():
     config = _make_config(api_key="YOUR_RAPIDAPI_KEY")
-    assert fetch_jobs(config) == []
+    with pytest.raises(SourceNotConfiguredError):
+        fetch_jobs(config)
 
 
 def test_fetch_jobs_returns_jobs_within_cutoff():
