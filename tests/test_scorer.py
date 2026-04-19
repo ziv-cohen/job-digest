@@ -13,6 +13,7 @@ from pipeline.scorer import (
     _score_freshness,
     _score_conditions,
     _has_growth_signals,
+    _is_hybrid,
 )
 
 
@@ -236,6 +237,45 @@ def test_location_no_location_info_scores_grace(scoring_cfg):
 def test_location_none_scores_grace(scoring_cfg):
     job = make_job(location=None, is_remote=False)
     assert _score_location(job, scoring_cfg) == 15  # no_location_info
+
+
+# ── _is_hybrid / hybrid keyword detection ───────────────────────
+
+def test_is_hybrid_from_description():
+    job = make_job(description="This is a hybrid role based in Berlin.")
+    assert _is_hybrid(job) is True
+
+def test_is_hybrid_from_title():
+    job = make_job(title="Engineering Manager (Hybrid)")
+    assert _is_hybrid(job) is True
+
+def test_is_hybrid_false_when_absent():
+    job = make_job(title="Engineering Manager", description="Remote-first company.")
+    assert _is_hybrid(job) is False
+
+def test_location_2hr_city_hybrid_via_description(scoring_cfg):
+    # is_remote=False but description says hybrid — should score commute_2hr
+    job = make_job(location="Dresden, Germany", is_remote=False, description="Hybrid role, 2 days onsite.")
+    assert _score_location(job, scoring_cfg) == 50
+
+def test_location_4hr_city_hybrid_via_description(scoring_cfg):
+    # Berlin with is_remote=False but hybrid keyword — should score commute_4hr
+    job = make_job(location="Berlin, Germany", is_remote=False, description="Hybrid position available.")
+    assert _score_location(job, scoring_cfg) == 25
+
+def test_location_4hr_city_vienna_hybrid_via_description(scoring_cfg):
+    job = make_job(location="Vienna, Austria", is_remote=False, description="Hybrid work model.")
+    assert _score_location(job, scoring_cfg) == 25
+
+def test_location_known_city_hybrid_still_scores_zero(scoring_cfg):
+    # Hybrid in a city outside commute range — still distant_onsite (can't commute to Munich even some days)
+    job = make_job(location="Munich, Germany", is_remote=False, description="Hybrid work available.")
+    assert _score_location(job, scoring_cfg) == 0
+
+def test_location_no_location_hybrid_scores_generic_remote(scoring_cfg):
+    # No location info + hybrid keyword — company seems remote-flexible
+    job = make_job(location="", is_remote=False, description="Hybrid role, flexible location.")
+    assert _score_location(job, scoring_cfg) == 40
 
 
 # ── _score_company_type ──────────────────────────────────────────

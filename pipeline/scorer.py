@@ -150,6 +150,13 @@ def _score_title(job: Job, cfg: dict) -> float:
 
 # ── Location fit ────────────────────────────────────────────────
 
+def _is_hybrid(job: Job) -> bool:
+    """Return True if the job description or title mentions hybrid work."""
+    if "hybrid" in job.title.lower():
+        return True
+    return "hybrid" in (job.description or "").lower()
+
+
 def _score_location(job: Job, cfg: dict) -> float:
     loc_cfg = cfg["location_fit"]
     loc_lower = (job.location or "").lower()
@@ -169,24 +176,27 @@ def _score_location(job: Job, cfg: dict) -> float:
     if job.is_remote and job.remote_region == "Worldwide":
         return loc_cfg["worldwide_remote"]
 
+    # JSearch and other APIs often set is_remote=False for hybrid jobs — detect via keywords
+    is_hybrid = _is_hybrid(job)
+
     # Czech Republic (not Prague)
     czech_indicators = ["czech", "\u010desk", "brno", "plzen", "plze\u0148", "kutna hora", "kutn\u00e1 hora"]
     if any(c in loc_lower for c in czech_indicators):
-        if job.is_remote:
+        if job.is_remote or is_hybrid:
             return loc_cfg["czech_remote"]
         return loc_cfg["commute_2hr"]  # Czech cities are close enough for on-site
 
     # Cities within ~2hr by train — hybrid/remote only
     cities_2hr = ["dresden"]
     if any(city in loc_lower for city in cities_2hr):
-        if not job.is_remote:
+        if not job.is_remote and not is_hybrid:
             return loc_cfg["distant_onsite"]
         return loc_cfg["commute_2hr"]
 
     # Cities within ~4hr by train — hybrid/remote only
     cities_4hr = ["ostrava", "wroclaw", "bratislava", "vienna", "wien", "berlin"]
     if any(city in loc_lower for city in cities_4hr):
-        if not job.is_remote:
+        if not job.is_remote and not is_hybrid:
             return loc_cfg["distant_onsite"]
         return loc_cfg["commute_4hr"]
 
@@ -194,9 +204,13 @@ def _score_location(job: Job, cfg: dict) -> float:
     if job.is_remote:
         return loc_cfg["generic_remote"]
 
-    # Known location but not relevant (distant on-site city)
+    # Known location outside commute range — distant on-site regardless of hybrid
     if loc_lower:
         return loc_cfg["distant_onsite"]
+
+    # No location info: hybrid keyword suggests remote flexibility
+    if is_hybrid:
+        return loc_cfg["generic_remote"]
 
     # No location data at all — pass gracefully, let LLM and other signals decide
     return loc_cfg["no_location_info"]
