@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
-from datetime import datetime
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Any
@@ -100,7 +100,7 @@ def _build_html(jobs: list[Job], now: datetime | None = None) -> str:
 
         # Date display
         if job.date_posted:
-            age_hours = (datetime.utcnow() - job.date_posted.replace(tzinfo=None)).total_seconds() / 3600
+            age_hours = (datetime.now(timezone.utc) - job.date_posted.replace(tzinfo=timezone.utc)).total_seconds() / 3600
             if age_hours < 24:
                 date_display = "Today"
             elif age_hours < 48:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -24,7 +24,7 @@ class Job:
 
     # --- Dates ---
     date_posted: Optional[datetime] = None
-    date_fetched: datetime = field(default_factory=datetime.utcnow)
+    date_fetched: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # --- Compensation ---
     salary_min: Optional[float] = None
