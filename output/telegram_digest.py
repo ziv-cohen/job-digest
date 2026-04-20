@@ -17,16 +17,6 @@ logger = logging.getLogger(__name__)
 TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 MAX_MESSAGE_LENGTH = 4096  # Telegram hard limit per message
 
-_BREAKDOWN_LABELS: dict[str, str] = {
-    "profile_match": "Profile",
-    "title": "Title",
-    "location": "Loc",
-    "company_type": "Co",
-    "seniority": "Level",
-    "freshness": "Fresh",
-    "conditions": "Cond",
-}
-
 _WEIGHTS_LABELS: dict[str, tuple[str, str]] = {
     "profile_match": ("🤖", "Profile match"),
     "title":         ("📌", "Title"),
@@ -154,11 +144,11 @@ def _format_job(rank: int, job: Job) -> str:
 
     breakdown_parts = []
     if job.score_breakdown:
-        for cat, label in _BREAKDOWN_LABELS.items():
+        for cat, (emoji, label) in _WEIGHTS_LABELS.items():
             score = job.score_breakdown.get(cat)
             if score is None or score == 0.0:
                 continue
-            breakdown_parts.append(f"{label} {round(score)}")
+            breakdown_parts.append(f"{emoji} {label} {round(score)}")
 
     lines = [
         f"\n<b>#{rank} [{job.score:.0f}%] <a href=\"{job.url}\">{job.title}</a></b>",

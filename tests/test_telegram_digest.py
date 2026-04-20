@@ -95,14 +95,14 @@ def test_format_job_breakdown_line_shown():
     job = make_job()
     result = _format_job(1, job)
     assert "📊" in result
-    assert "Profile" in result
-    assert "Title" in result
+    assert "🤖 Profile match 80" in result
+    assert "📌 Title 100" in result
 
 def test_format_job_breakdown_omits_zero_score():
-    # conditions score=0 → omitted from breakdown line
+    # conditions score=0 → 💼 omitted from breakdown line
     job = make_job()
     result = _format_job(1, job)
-    assert "Cond" not in result
+    assert "💼" not in result
 
 def test_format_job_rationale_shown_when_present():
     job = make_job(profile_match_rationale="Strong Director match, EMEA remote")
@@ -113,7 +113,8 @@ def test_format_job_rationale_shown_when_present():
 def test_format_job_rationale_hidden_when_empty():
     job = make_job(profile_match_rationale="")
     result = _format_job(1, job)
-    assert "🤖" not in result
+    # breakdown uses "🤖80" (no space); rationale line uses "🤖 text" (with space)
+    assert "\n🤖 " not in result
 
 def test_format_job_today_label():
     job = make_job(date_posted=datetime.now(timezone.utc) - timedelta(hours=1))
