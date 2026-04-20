@@ -162,6 +162,26 @@ def test_build_messages_header_in_first():
     messages = _build_messages(jobs)
     assert "Job Digest" in messages[0]
 
+def test_build_messages_weights_shown_one_per_line():
+    jobs = [make_job()]
+    messages = _build_messages(jobs, weights=_WEIGHTS)
+    header = messages[0]
+    assert "🤖 Profile match 45%" in header
+    assert "📌 Title 15%" in header
+    assert "📍 Location 15%" in header
+    assert "🏢 Company type 10%" in header
+    assert "🏷 Seniority 5%" in header
+    assert "🕐 Freshness 5%" in header
+    assert "💼 Conditions 5%" in header
+    # Each criterion on its own line
+    assert "Profile match 45%\n📌" in header
+
+def test_build_messages_zero_weight_omitted():
+    jobs = [make_job()]
+    weights = {**_WEIGHTS, "conditions": 0}
+    messages = _build_messages(jobs, weights=weights)
+    assert "💼" not in messages[0]
+
 def test_build_messages_splits_when_over_limit():
     # Create enough jobs to exceed 4096 chars
     jobs = [make_job(title=f"Engineering Director {i}", description="x" * 100) for i in range(30)]

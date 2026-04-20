@@ -27,6 +27,16 @@ _BREAKDOWN_LABELS: dict[str, str] = {
     "conditions": "Cond",
 }
 
+_WEIGHTS_LABELS: dict[str, tuple[str, str]] = {
+    "profile_match": ("🤖", "Profile match"),
+    "title":         ("📌", "Title"),
+    "location":      ("📍", "Location"),
+    "company_type":  ("🏢", "Company type"),
+    "seniority":     ("🏷", "Seniority"),
+    "freshness":     ("🕐", "Freshness"),
+    "conditions":    ("💼", "Conditions"),
+}
+
 
 def send_digest(jobs: list[Job], config: dict[str, Any],
                 health: list[HealthStatus] | None = None) -> bool:
@@ -80,12 +90,12 @@ def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None,
     now = datetime.now(tz).strftime("%d %b %Y, %H:%M")
     header = f"<b>Job Digest — {now}</b>\n{len(jobs)} matches\n"
     if weights:
-        weight_parts = [
-            f"{_BREAKDOWN_LABELS[cat]} {w}%"
-            for cat, w in weights.items()
-            if cat in _BREAKDOWN_LABELS and w
+        weight_lines = [
+            f"{emoji} {label} {weights[cat]}%"
+            for cat, (emoji, label) in _WEIGHTS_LABELS.items()
+            if weights.get(cat)
         ]
-        header += f"<i>Weights: {' · '.join(weight_parts)}</i>\n"
+        header += "<i>" + "\n".join(weight_lines) + "</i>\n"
 
     job_blocks = [_format_job(i, job) for i, job in enumerate(jobs, 1)]
 

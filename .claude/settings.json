@@ -1,4 +1,9 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest *)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
