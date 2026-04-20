@@ -76,7 +76,10 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
         mail.logout()
 
     except imaplib.IMAP4.error as exc:
-        raise RuntimeError(f"IMAP connection failed: {exc}") from exc
+        raw = exc.args[0].decode("utf-8", errors="replace") if exc.args and isinstance(exc.args[0], bytes) else str(exc)
+        if "AUTHENTICATIONFAILED" in raw or "Invalid credentials" in raw:
+            raise RuntimeError("Gmail IMAP auth failed — check app password and IMAP access") from exc
+        raise RuntimeError(f"IMAP error: {raw}") from exc
 
     return all_jobs
 

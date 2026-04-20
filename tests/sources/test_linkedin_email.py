@@ -166,5 +166,5 @@ def test_fetch_jobs_raises_on_imap_auth_failure():
     }
     with patch("imaplib.IMAP4_SSL") as mock_imap:
         mock_imap.return_value.login.side_effect = imaplib.IMAP4.error("AUTHENTICATIONFAILED")
-        with pytest.raises(RuntimeError, match="IMAP connection failed"):
+        with pytest.raises(RuntimeError, match="Gmail IMAP auth failed"):
             fetch_jobs(config)
