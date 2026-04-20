@@ -1,9 +1,13 @@
 """Unit tests for sources/linkedin_email.py"""
 
 import email as email_lib
+import imaplib
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from unittest.mock import patch
+
+import pytest
 
 from pipeline.health_check import SourceNotConfiguredError
 from sources.linkedin_email import (
@@ -141,7 +145,6 @@ def test_fetch_jobs_raises_when_unconfigured_credentials():
         },
         "search": {"max_age_days": 7},
     }
-    import pytest
     with pytest.raises(SourceNotConfiguredError):
         fetch_jobs(config)
 
@@ -153,6 +156,15 @@ def test_fetch_jobs_raises_when_empty_credentials():
         },
         "search": {"max_age_days": 7},
     }
-    import pytest
     with pytest.raises(SourceNotConfiguredError):
         fetch_jobs(config)
+
+def test_fetch_jobs_raises_on_imap_auth_failure():
+    config = {
+        "email": {"sender_email": "test@gmail.com", "sender_password": "app-password"},
+        "search": {"max_age_days": 7},
+    }
+    with patch("imaplib.IMAP4_SSL") as mock_imap:
+        mock_imap.return_value.login.side_effect = imaplib.IMAP4.error("AUTHENTICATIONFAILED")
+        with pytest.raises(RuntimeError, match="IMAP connection failed"):
+            fetch_jobs(config)

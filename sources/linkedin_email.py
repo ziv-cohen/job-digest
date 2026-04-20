@@ -76,9 +76,7 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
         mail.logout()
 
     except imaplib.IMAP4.error as exc:
-        logger.error("IMAP connection failed: %s", exc)
-    except Exception as exc:
-        logger.error("LinkedIn alerts fetch failed: %s", exc)
+        raise RuntimeError(f"IMAP connection failed: {exc}") from exc
 
     return all_jobs
 
