@@ -29,19 +29,22 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     city = search["locations"]["primary_city"]
     country = search["locations"]["country"]
     region = search["locations"]["region"]
+    # Combine all role titles with OR — Google Jobs (used by JSearch) supports this,
+    # reducing API usage to 2 requests/run regardless of how many titles are configured.
+    titles_expr = " OR ".join(f'"{t}"' for t in role_titles)
 
     headers = {
         "x-rapidapi-key": api_key,
         "x-rapidapi-host": RAPIDAPI_HOST,
     }
 
-    # Build query combinations:
-    # 1. Each title + Prague / Czech Republic
-    # 2. Each title + "remote" + EMEA
-    queries = []
-    for title in role_titles:
-        queries.append(f"{title} in {city}, {country}")
-        queries.append(f"{title} remote {region}")
+    # Two queries cover the entire title set: one for Prague, one for EMEA remote.
+    # Google Jobs (used by JSearch) supports OR operators in the query string.
+    queries = [
+        f"({titles_expr}) in {city}, {country}",
+        f"({titles_expr}) remote {region}",
+    ]
+    logger.info("JSearch: running %d queries covering %d titles", len(queries), len(role_titles))
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age)
     all_jobs: list[Job] = []

@@ -48,6 +48,7 @@ search:
   # Max job age in days — older jobs are discarded entirely
   max_age_days: 7
 
+
 # --- Anthropic / LLM settings ---
 anthropic:
   api_key: "YOUR_ANTHROPIC_KEY"
