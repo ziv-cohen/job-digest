@@ -19,6 +19,7 @@ from bs4 import BeautifulSoup
 from models import Job
 
 logger = logging.getLogger(__name__)
+logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 _LINKEDIN_SENDER = "jobs-noreply@linkedin.com"
