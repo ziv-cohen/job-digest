@@ -11,6 +11,7 @@ import base64
 import logging
 import os
 import re
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -22,7 +23,8 @@ logger = logging.getLogger(__name__)
 logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-_LINKEDIN_SENDER = "jobs-noreply@linkedin.com"
+_LINKEDIN_SENDERS = ["jobs-noreply@linkedin.com", "jobalerts-noreply@linkedin.com", "jobs-listings@linkedin.com"]
+_SEP = "\u00b7"  # middle dot — LinkedIn's company/location separator in alert emails
 
 
 def fetch_jobs(config: dict[str, Any]) -> list[Job]:
@@ -44,7 +46,8 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
         raise RuntimeError(f"Gmail API auth failed: {exc}") from exc
 
     since_date = (datetime.now() - timedelta(days=max_age)).strftime("%Y/%m/%d")
-    query = f"from:{_LINKEDIN_SENDER} after:{since_date}"
+    sender_query = " OR ".join(f"from:{s}" for s in _LINKEDIN_SENDERS)
+    query = f"({sender_query}) after:{since_date}"
 
     try:
         result = service.users().messages().list(
@@ -123,47 +126,60 @@ def _parse_email_date(date_str: str) -> datetime | None:
         return None
 
 
+def _extract_company_location(title: str, links: list) -> tuple[str, str]:
+    """Extract company and location from the combined 'TitleCompany · Location' link text."""
+    combined = next(
+        (l.get_text(strip=True) for l in links
+         if l.get_text(strip=True).startswith(title) and _SEP in l.get_text(strip=True)),
+        None,
+    )
+    if not combined:
+        return "", ""
+    remainder = combined[len(title):]
+    if f" {_SEP} " not in remainder:
+        return remainder.strip(), ""
+    company_raw, location_raw = remainder.split(f" {_SEP} ", 1)
+    company = company_raw.strip()
+    # Strip social/status badges appended by LinkedIn directly to location (no separator)
+    _BADGES = (r"\d+ connections?", r"\d+ school alumni", "Easy Apply", "Actively recruiting", "Fast growing")
+    location = location_raw
+    for badge in _BADGES:
+        location = re.sub(badge, "", location, flags=re.I).strip()
+    return company, location
+
+
 def _parse_linkedin_alert(html: str, email_date: datetime | None) -> list[Job]:
     """Parse job listings from a LinkedIn job alert email."""
     soup = BeautifulSoup(html, "html.parser")
     jobs: list[Job] = []
 
-    # LinkedIn alert emails contain job cards as table rows or divs
-    # with links to linkedin.com/jobs/view/...
-    job_links = soup.find_all("a", href=re.compile(r"linkedin\.com/jobs/view|linkedin\.com/comm/jobs"))
+    # Require a numeric job ID — excludes /search?, /collections/, "see all" links, etc.
+    job_links = soup.find_all("a", href=re.compile(r"linkedin\.com/(comm/)?jobs/view/\d+"))
 
-    seen_urls: set[str] = set()
+    # Group all links by clean URL so we can pick the best title per job
+    url_links: dict[str, list] = defaultdict(list)
     for link in job_links:
+        url = re.sub(r"\?.*$", "", link.get("href", "").rstrip("/"))
+        if url:
+            url_links[url].append(link)
+
+    # Patterns that indicate a UI label rather than a job title
+    _SKIP = re.compile(r"apply now|see all|similar to|jobs at|jobs in|learn why|unsubscribe|help|message", re.I)
+
+    for url, links in url_links.items():
         try:
-            url = link.get("href", "")
-            # Clean tracking params
-            url = re.sub(r"\?.*$", "", url)
-
-            if url in seen_urls or not url:
-                continue
-            seen_urls.add(url)
-
-            # Title is usually the link text
-            title = link.get_text(strip=True)
-            if not title or len(title) < 5:
+            # Pick shortest clean text — title-only links are always shorter than
+            # the combined "TitleCompanyLocation" or "Jobs similar to X at Y" links
+            candidates = [l.get_text(strip=True) for l in links]
+            title = next(
+                (t for t in sorted(candidates, key=len) if len(t) >= 5 and not _SKIP.search(t)),
+                None,
+            )
+            if not title:
                 continue
 
-            # Company is typically in a nearby element
-            parent = link.find_parent(["tr", "td", "div", "table"])
-            company = ""
-            location = ""
-            if parent:
-                text_parts = parent.get_text(separator="|", strip=True).split("|")
-                # Heuristic: title is first, company second, location third
-                for part in text_parts:
-                    part = part.strip()
-                    if part == title:
-                        continue
-                    if not company and len(part) > 2 and not any(c in part for c in ["@", "http"]):
-                        company = part
-                    elif not location and len(part) > 2:
-                        location = part
-
+            # Extract company and location from the combined "TitleCompany · Location" link
+            company, location = _extract_company_location(title, links)
             if not company:
                 company = "Unknown (LinkedIn)"
 

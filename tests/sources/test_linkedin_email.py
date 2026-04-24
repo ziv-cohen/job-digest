@@ -69,16 +69,19 @@ def test_extract_html_body_nested():
 # ── _parse_linkedin_alert ────────────────────────────────────────
 
 def _alert_html(jobs: list[dict]) -> str:
+    """Generate LinkedIn-style alert HTML with combined and title-only links per job."""
     cards = ""
     for j in jobs:
+        company = j.get('company', 'Acme')
+        location = j.get('location', 'Prague')
+        url = j['url']
+        title = j['title']
+        combined = f"{title}{company} \u00b7 {location}"
         cards += f"""
-        <tr>
-          <td>
-            <a href="{j['url']}">{j['title']}</a>
-            <span>{j.get('company', 'Acme')}</span>
-            <span>{j.get('location', 'Prague')}</span>
-          </td>
-        </tr>
+        <tr><td>
+          <a href="{url}">{combined}</a>
+          <a href="{url}">{title}</a>
+        </td></tr>
         """
     return f"<html><body><table>{cards}</table></body></html>"
 
@@ -129,6 +132,47 @@ def test_parse_linkedin_alert_skips_short_titles():
     titles = [j.title for j in _parse_linkedin_alert(html, None)]
     assert "Engineering Director" in titles
     assert "EM" not in titles
+
+def test_parse_linkedin_alert_strips_location_badges():
+    # LinkedIn appends social badges directly to location text with no separator
+    html = (
+        '<html><body><table><tr><td>'
+        '<a href="https://linkedin.com/comm/jobs/view/123">'
+        'Engineering DirectorAcme \u00b7 Czechia (Remote)3 school alumniEasy ApplyFast growing'
+        '</a>'
+        '<a href="https://linkedin.com/comm/jobs/view/123">Engineering Director</a>'
+        '</td></tr></table></body></html>'
+    )
+    job = _parse_linkedin_alert(html, None)[0]
+    assert job.location == "Czechia (Remote)"
+    assert job.company == "Acme"
+
+def test_parse_linkedin_alert_ignores_search_links():
+    # /jobs/search? links (e.g. "Director of Engineering jobs" footer) must not be parsed as jobs
+    html = (
+        '<html><body>'
+        '<a href="https://linkedin.com/comm/jobs/view/123">Engineering Director</a>'
+        '<a href="https://linkedin.com/comm/jobs/search?keywords=Director+of+Engineering">'
+        'Director of Engineering jobs</a>'
+        '</body></html>'
+    )
+    jobs = _parse_linkedin_alert(html, None)
+    assert len(jobs) == 1
+    assert jobs[0].title == "Engineering Director"
+
+def test_parse_linkedin_alert_picks_clean_title_when_duplicate_links():
+    # Real emails have multiple links per job: empty, combined "TitleCompanyLocation", title-only.
+    # Parser must pick the shortest clean text (title-only), not the combined one.
+    html = (
+        '<html><body><table><tr><td>'
+        '<a href="https://linkedin.com/comm/jobs/view/123"></a>'
+        '<a href="https://linkedin.com/comm/jobs/view/123">Engineering DirectorStripe · London</a>'
+        '<a href="https://linkedin.com/comm/jobs/view/123">Engineering Director</a>'
+        '</td></tr></table></body></html>'
+    )
+    jobs = _parse_linkedin_alert(html, None)
+    assert len(jobs) == 1
+    assert jobs[0].title == "Engineering Director"
 
 
 # ── fetch_jobs ───────────────────────────────────────────────────
