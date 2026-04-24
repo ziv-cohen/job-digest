@@ -1,18 +1,15 @@
 """Unit tests for sources/linkedin_email.py"""
 
-import email as email_lib
-import imaplib
+import base64
 from datetime import datetime, timezone
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from pipeline.health_check import SourceNotConfiguredError
 from sources.linkedin_email import (
     fetch_jobs,
-    _get_html_body,
+    _extract_html_body,
     _parse_email_date,
     _parse_linkedin_alert,
 )
@@ -33,38 +30,45 @@ def test_parse_email_date_empty_returns_none():
     assert _parse_email_date("") is None
 
 
-# ── _get_html_body ───────────────────────────────────────────────
+# ── _extract_html_body ───────────────────────────────────────────
 
-def test_get_html_body_multipart():
-    msg = MIMEMultipart("alternative")
-    msg.attach(MIMEText("plain text", "plain"))
-    msg.attach(MIMEText("<p>html content</p>", "html"))
-    # Parse it through the email module as fetch_jobs would receive it
-    raw = msg.as_bytes()
-    parsed = email_lib.message_from_bytes(raw)
-    result = _get_html_body(parsed)
-    assert result is not None
-    assert "html content" in result
+def _b64(html: str) -> str:
+    return base64.urlsafe_b64encode(html.encode()).decode()
 
-def test_get_html_body_plain_only_returns_none():
-    msg = MIMEText("just plain text", "plain")
-    raw = msg.as_bytes()
-    parsed = email_lib.message_from_bytes(raw)
-    assert _get_html_body(parsed) is None
+def test_extract_html_body_simple():
+    payload = {"mimeType": "text/html", "body": {"data": _b64("<p>hello</p>")}, "parts": []}
+    assert "hello" in _extract_html_body(payload)
 
-def test_get_html_body_single_html_part():
-    msg = MIMEText("<p>only html</p>", "html")
-    raw = msg.as_bytes()
-    parsed = email_lib.message_from_bytes(raw)
-    result = _get_html_body(parsed)
-    assert result is not None
-    assert "only html" in result
+def test_extract_html_body_multipart():
+    payload = {
+        "mimeType": "multipart/alternative",
+        "body": {},
+        "parts": [
+            {"mimeType": "text/plain", "body": {"data": _b64("plain")}, "parts": []},
+            {"mimeType": "text/html",  "body": {"data": _b64("<p>html</p>")}, "parts": []},
+        ],
+    }
+    assert "html" in _extract_html_body(payload)
+
+def test_extract_html_body_no_html_returns_none():
+    payload = {
+        "mimeType": "multipart/alternative",
+        "body": {},
+        "parts": [{"mimeType": "text/plain", "body": {"data": _b64("plain")}, "parts": []}],
+    }
+    assert _extract_html_body(payload) is None
+
+def test_extract_html_body_nested():
+    inner = {"mimeType": "text/html", "body": {"data": _b64("<p>deep</p>")}, "parts": []}
+    outer = {"mimeType": "multipart/mixed", "body": {}, "parts": [
+        {"mimeType": "multipart/alternative", "body": {}, "parts": [inner]},
+    ]}
+    assert "deep" in _extract_html_body(outer)
 
 
 # ── _parse_linkedin_alert ────────────────────────────────────────
 
 def _alert_html(jobs: list[dict]) -> str:
-    """Build a minimal LinkedIn-style alert email HTML."""
     cards = ""
     for j in jobs:
         cards += f"""
@@ -82,7 +86,7 @@ def _alert_html(jobs: list[dict]) -> str:
 def test_parse_linkedin_alert_extracts_jobs():
     html = _alert_html([
         {"title": "Engineering Director", "url": "https://linkedin.com/jobs/view/123", "company": "Stripe"},
-        {"title": "Engineering Manager", "url": "https://linkedin.com/jobs/view/456", "company": "Acme"},
+        {"title": "Engineering Manager",  "url": "https://linkedin.com/jobs/view/456", "company": "Acme"},
     ])
     jobs = _parse_linkedin_alert(html, None)
     assert len(jobs) == 2
@@ -93,78 +97,97 @@ def test_parse_linkedin_alert_deduplicates_by_url():
         {"title": "Engineering Director", "url": "https://linkedin.com/jobs/view/123"},
         {"title": "Engineering Director", "url": "https://linkedin.com/jobs/view/123"},
     ])
-    jobs = _parse_linkedin_alert(html, None)
-    assert len(jobs) == 1
+    assert len(_parse_linkedin_alert(html, None)) == 1
 
 def test_parse_linkedin_alert_strips_query_params():
     html = _alert_html([
         {"title": "Engineering Director",
          "url": "https://linkedin.com/jobs/view/123?trackingId=abc&refId=xyz"},
     ])
-    jobs = _parse_linkedin_alert(html, None)
-    assert "?" not in jobs[0].url
+    assert "?" not in _parse_linkedin_alert(html, None)[0].url
 
 def test_parse_linkedin_alert_uses_email_date():
     email_date = datetime(2025, 6, 1, tzinfo=timezone.utc)
-    html = _alert_html([
-        {"title": "Engineering Director", "url": "https://linkedin.com/jobs/view/123"},
-    ])
-    jobs = _parse_linkedin_alert(html, email_date)
-    assert jobs[0].date_posted == email_date
+    html = _alert_html([{"title": "Engineering Director", "url": "https://linkedin.com/jobs/view/123"}])
+    assert _parse_linkedin_alert(html, email_date)[0].date_posted == email_date
 
 def test_parse_linkedin_alert_remote_detection():
     html = _alert_html([
         {"title": "Engineering Director", "url": "https://linkedin.com/jobs/view/123",
          "location": "Prague (Remote)"},
     ])
-    jobs = _parse_linkedin_alert(html, None)
-    assert jobs[0].is_remote is True
+    assert _parse_linkedin_alert(html, None)[0].is_remote is True
 
 def test_parse_linkedin_alert_empty_html():
-    jobs = _parse_linkedin_alert("<html><body></body></html>", None)
-    assert jobs == []
+    assert _parse_linkedin_alert("<html><body></body></html>", None) == []
 
 def test_parse_linkedin_alert_skips_short_titles():
     html = _alert_html([
-        {"title": "EM", "url": "https://linkedin.com/jobs/view/999"},  # too short
+        {"title": "EM",                   "url": "https://linkedin.com/jobs/view/999"},
         {"title": "Engineering Director", "url": "https://linkedin.com/jobs/view/123"},
     ])
-    jobs = _parse_linkedin_alert(html, None)
-    titles = [j.title for j in jobs]
+    titles = [j.title for j in _parse_linkedin_alert(html, None)]
     assert "Engineering Director" in titles
     assert "EM" not in titles
 
 
 # ── fetch_jobs ───────────────────────────────────────────────────
 
-def test_fetch_jobs_raises_when_unconfigured_credentials():
-    config = {
-        "email": {
-            "sender_email": "test@gmail.com",
-            "sender_password": "YOUR_PASSWORD",
-        },
-        "search": {"max_age_days": 7},
-    }
-    with pytest.raises(SourceNotConfiguredError):
+def _make_config(**kwargs):
+    return {"linkedin_email": kwargs, "search": {"max_age_days": 7}}
+
+
+def test_fetch_jobs_raises_when_credentials_file_missing():
+    config = _make_config(credentials_path="nonexistent.json", token_path="nonexistent_token.json")
+    with pytest.raises(SourceNotConfiguredError, match="Gmail credentials not found"):
         fetch_jobs(config)
 
-def test_fetch_jobs_raises_when_empty_credentials():
-    config = {
-        "email": {
-            "sender_email": "",
-            "sender_password": "",
-        },
-        "search": {"max_age_days": 7},
-    }
-    with pytest.raises(SourceNotConfiguredError):
-        fetch_jobs(config)
 
-def test_fetch_jobs_raises_on_imap_auth_failure():
-    config = {
-        "email": {"sender_email": "test@gmail.com", "sender_password": "app-password"},
-        "search": {"max_age_days": 7},
-    }
-    with patch("imaplib.IMAP4_SSL") as mock_imap:
-        mock_imap.return_value.login.side_effect = imaplib.IMAP4.error("AUTHENTICATIONFAILED")
-        with pytest.raises(RuntimeError, match="Gmail IMAP auth failed"):
+def test_fetch_jobs_raises_on_auth_failure(tmp_path):
+    creds = tmp_path / "creds.json"
+    creds.write_text("{}")
+    config = _make_config(credentials_path=str(creds), token_path=str(tmp_path / "token.json"))
+    with patch("sources.linkedin_email._get_gmail_service", side_effect=Exception("auth error")):
+        with pytest.raises(RuntimeError, match="Gmail API auth failed"):
             fetch_jobs(config)
+
+
+def test_fetch_jobs_returns_empty_when_no_emails(tmp_path):
+    creds = tmp_path / "creds.json"
+    creds.write_text("{}")
+    config = _make_config(credentials_path=str(creds), token_path=str(tmp_path / "token.json"))
+
+    mock_service = MagicMock()
+    mock_service.users().messages().list().execute.return_value = {"messages": []}
+
+    with patch("sources.linkedin_email._get_gmail_service", return_value=mock_service):
+        assert fetch_jobs(config) == []
+
+
+def test_fetch_jobs_parses_email_html(tmp_path):
+    creds = tmp_path / "creds.json"
+    creds.write_text("{}")
+    config = _make_config(credentials_path=str(creds), token_path=str(tmp_path / "token.json"))
+
+    html = _alert_html([
+        {"title": "Engineering Director", "url": "https://linkedin.com/jobs/view/1", "company": "Stripe"},
+    ])
+    encoded = base64.urlsafe_b64encode(html.encode()).decode()
+
+    mock_service = MagicMock()
+    mock_service.users().messages().list().execute.return_value = {"messages": [{"id": "msg1"}]}
+    mock_service.users().messages().get().execute.return_value = {
+        "payload": {
+            "mimeType": "text/html",
+            "body": {"data": encoded},
+            "parts": [],
+            "headers": [{"name": "Date", "value": "Mon, 01 Jun 2025 12:00:00 +0000"}],
+        }
+    }
+
+    with patch("sources.linkedin_email._get_gmail_service", return_value=mock_service):
+        jobs = fetch_jobs(config)
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "Engineering Director"
+    assert jobs[0].source == "linkedin"

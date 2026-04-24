@@ -49,6 +49,13 @@ search:
   max_age_days: 7
 
 
+# --- LinkedIn Email Alerts (Gmail API) ---
+# First run: opens browser for OAuth2 consent. Token is saved and auto-refreshed.
+# Get credentials at: https://console.cloud.google.com/ → APIs & Services → Credentials
+linkedin_email:
+  credentials_path: "gmail_credentials.json"  # OAuth2 client secrets from Google Cloud Console
+  token_path: "gmail_token.json"              # auto-generated after first OAuth2 consent
+
 # --- Anthropic / LLM settings ---
 anthropic:
   api_key: "YOUR_ANTHROPIC_KEY"

@@ -1,13 +1,17 @@
-"""LinkedIn email alerts parser — reads Gmail for LinkedIn job alert emails."""
+"""LinkedIn email alerts parser — reads Gmail for LinkedIn job alert emails.
+
+Authentication: Gmail API with gmail.readonly OAuth2 scope.
+First run: opens a browser for OAuth2 consent. gmail_token.json is saved and
+reused on subsequent runs (auto-refreshed — no re-approval needed).
+"""
 
 from __future__ import annotations
 
-import email
-import imaplib
+import base64
 import logging
+import os
 import re
 from datetime import datetime, timedelta, timezone
-from email.header import decode_header
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -16,88 +20,96 @@ from models import Job
 
 logger = logging.getLogger(__name__)
 
+SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+_LINKEDIN_SENDER = "jobs-noreply@linkedin.com"
+
 
 def fetch_jobs(config: dict[str, Any]) -> list[Job]:
-    """Connect to Gmail via IMAP, find LinkedIn alert emails, parse job listings."""
-    email_cfg = config["email"]
-    sender_email = email_cfg.get("sender_email", "")
-    sender_password = email_cfg.get("sender_password", "")
+    """Fetch LinkedIn job alert emails via Gmail API (gmail.readonly scope)."""
+    le_cfg = config.get("linkedin_email", {})
+    credentials_path = le_cfg.get("credentials_path", "gmail_credentials.json")
+    token_path = le_cfg.get("token_path", "gmail_token.json")
     max_age = config["search"]["max_age_days"]
 
-    if not sender_email or not sender_password or sender_password.startswith("YOUR_"):
+    if not os.path.exists(credentials_path) and not os.path.exists(token_path):
         from pipeline.health_check import SourceNotConfiguredError
-        raise SourceNotConfiguredError("Email credentials not configured")
-
-    all_jobs: list[Job] = []
+        raise SourceNotConfiguredError(
+            f"Gmail credentials not found at {credentials_path}"
+        )
 
     try:
-        # Connect to Gmail IMAP
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(sender_email, sender_password)
-        mail.select("inbox")
+        service = _get_gmail_service(credentials_path, token_path)
+    except Exception as exc:
+        raise RuntimeError(f"Gmail API auth failed: {exc}") from exc
 
-        # Search for LinkedIn job alert emails from the last N days
-        since_date = (datetime.now() - timedelta(days=max_age)).strftime("%d-%b-%Y")
-        search_query = f'(FROM "jobs-noreply@linkedin.com" SINCE {since_date})'
+    since_date = (datetime.now() - timedelta(days=max_age)).strftime("%Y/%m/%d")
+    query = f"from:{_LINKEDIN_SENDER} after:{since_date}"
 
-        status, message_ids = mail.search(None, search_query)
-        if status != "OK" or not message_ids[0]:
-            logger.info("LinkedIn alerts: no matching emails found.")
-            mail.logout()
-            return []
+    try:
+        result = service.users().messages().list(
+            userId="me", q=query
+        ).execute()
+    except Exception as exc:
+        raise RuntimeError(f"Gmail API request failed: {exc}") from exc
 
-        ids = message_ids[0].split()
-        logger.info("LinkedIn alerts: found %d alert emails", len(ids))
+    messages = result.get("messages", [])
+    if not messages:
+        logger.info("LinkedIn alerts: no matching emails found.")
+        return []
 
-        # Process last 20 emails max (most recent)
-        for msg_id in ids[-20:]:
-            try:
-                status, msg_data = mail.fetch(msg_id, "(RFC822)")
-                if status != "OK":
-                    continue
-                raw_email = msg_data[0][1]
-                msg = email.message_from_bytes(raw_email)
+    logger.info("LinkedIn alerts: found %d alert emails", len(messages))
+    all_jobs: list[Job] = []
 
-                # Get email date
-                email_date = _parse_email_date(msg.get("Date", ""))
-
-                # Extract HTML body
-                html_body = _get_html_body(msg)
-                if not html_body:
-                    continue
-
-                # Parse job listings from HTML
-                jobs = _parse_linkedin_alert(html_body, email_date)
-                all_jobs.extend(jobs)
-
-            except Exception as exc:
-                logger.debug("Failed to process email %s: %s", msg_id, exc)
-
-        mail.logout()
-
-    except imaplib.IMAP4.error as exc:
-        raw = exc.args[0].decode("utf-8", errors="replace") if exc.args and isinstance(exc.args[0], bytes) else str(exc)
-        if "AUTHENTICATIONFAILED" in raw or "Invalid credentials" in raw:
-            raise RuntimeError("Gmail IMAP auth failed — check app password and IMAP access") from exc
-        raise RuntimeError(f"IMAP error: {raw}") from exc
+    for msg_ref in messages:
+        try:
+            msg = service.users().messages().get(
+                userId="me", id=msg_ref["id"], format="full"
+            ).execute()
+            payload = msg.get("payload", {})
+            headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
+            email_date = _parse_email_date(headers.get("Date", ""))
+            html_body = _extract_html_body(payload)
+            if html_body:
+                all_jobs.extend(_parse_linkedin_alert(html_body, email_date))
+        except Exception as exc:
+            logger.debug("Failed to process email %s: %s", msg_ref["id"], exc)
 
     return all_jobs
 
 
-def _get_html_body(msg) -> str | None:
-    """Extract HTML body from an email message."""
-    if msg.is_multipart():
-        for part in msg.walk():
-            content_type = part.get_content_type()
-            if content_type == "text/html":
-                payload = part.get_payload(decode=True)
-                charset = part.get_content_charset() or "utf-8"
-                return payload.decode(charset, errors="replace")
-    else:
-        if msg.get_content_type() == "text/html":
-            payload = msg.get_payload(decode=True)
-            charset = msg.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
+def _get_gmail_service(credentials_path: str, token_path: str):
+    """Return an authenticated Gmail API service (gmail.readonly scope)."""
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from googleapiclient.discovery import build
+
+    creds = None
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open(token_path, "w") as f:
+            f.write(creds.to_json())
+
+    return build("gmail", "v1", credentials=creds)
+
+
+def _extract_html_body(payload: dict) -> str | None:
+    """Recursively extract the HTML body from a Gmail API message payload."""
+    if payload.get("mimeType") == "text/html":
+        data = payload.get("body", {}).get("data", "")
+        if data:
+            return base64.urlsafe_b64decode(data).decode("utf-8", errors="replace")
+    for part in payload.get("parts", []):
+        result = _extract_html_body(part)
+        if result:
+            return result
     return None
 
 
@@ -115,7 +127,7 @@ def _parse_linkedin_alert(html: str, email_date: datetime | None) -> list[Job]:
     soup = BeautifulSoup(html, "html.parser")
     jobs: list[Job] = []
 
-    # LinkedIn alert emails typically contain job cards as table rows or divs
+    # LinkedIn alert emails contain job cards as table rows or divs
     # with links to linkedin.com/jobs/view/...
     job_links = soup.find_all("a", href=re.compile(r"linkedin\.com/jobs/view|linkedin\.com/comm/jobs"))
 

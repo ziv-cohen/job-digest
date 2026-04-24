@@ -9,6 +9,15 @@ from typing import Any
 import yaml
 
 
+def _write_file_from_env(env_var: str, file_path: str | None) -> None:
+    """Write env var content to file_path if the env var is set and the file doesn't exist yet."""
+    content = os.environ.get(env_var)
+    if content and file_path and not os.path.exists(file_path):
+        os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
+        with open(file_path, "w") as f:
+            f.write(content)
+
+
 def _deep_merge(base: dict, override: dict) -> dict:
     """Recursively merge *override* into *base* (override wins)."""
     merged = base.copy()
@@ -63,6 +72,8 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
         "PROFILE_SUMMARY": ("profile_matcher", "profile_summary"),
         "PROFILE_MATCH_CACHE_PATH": ("profile_matcher", "cache_path"),
         "DIGEST_TIMEZONE": ("output", "timezone"),
+        "GMAIL_CREDENTIALS_PATH": ("linkedin_email", "credentials_path"),
+        "GMAIL_TOKEN_PATH": ("linkedin_email", "token_path"),
     }
     for env_var, path in env_map.items():
         value = os.environ.get(env_var)
@@ -71,6 +82,12 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
             for part in path[:-1]:
                 node = node.setdefault(part, {})
             node[path[-1]] = int(value) if value.isdigit() else value
+
+    # Write Gmail credential files from env vars if provided (Railway deployment)
+    # GMAIL_CREDENTIALS_JSON / GMAIL_TOKEN_JSON let you store file contents as env vars
+    # instead of uploading files to a volume manually. Written once; token is refreshed in place.
+    _write_file_from_env("GMAIL_CREDENTIALS_JSON", config.get("linkedin_email", {}).get("credentials_path"))
+    _write_file_from_env("GMAIL_TOKEN_JSON", config.get("linkedin_email", {}).get("token_path"))
 
     # Validate scoring weights sum to 100
     weights = config.get("scoring", {}).get("weights", {})

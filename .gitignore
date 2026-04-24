@@ -6,6 +6,10 @@ config.local.yaml
 profile.md
 profile_match_cache.json
 
+# Gmail API credentials (OAuth2 flow — never commit)
+gmail_credentials.json
+gmail_token.json
+
 # Build artifacts
 __pycache__/
 *.pyc

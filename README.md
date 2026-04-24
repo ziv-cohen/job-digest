@@ -43,7 +43,7 @@ job-digest/
 │   ├── adzuna.py            # Adzuna European API (GB, DE, FR, NL, AT, PL)
 │   ├── remotive.py          # Remotive.io (remote jobs, free API)
 │   ├── startupjobs.py       # StartupJobs.cz (Czech startup scene)
-│   └── linkedin_email.py    # LinkedIn alerts via Gmail IMAP (optional)
+│   └── linkedin_email.py    # LinkedIn alerts via Gmail API (gmail.readonly OAuth2)
 │
 ├── pipeline/
 │   ├── deduplicator.py      # Fuzzy deduplication (82% similarity threshold)
@@ -97,6 +97,7 @@ pip install -r requirements.txt
 | **Adzuna** | App ID + App Key | Free — [sign up](https://developer.adzuna.com/) |
 | **Remotive** | None | Public API |
 | **StartupJobs.cz** | None | Public scraping |
+| **LinkedIn Email Alerts** | Gmail API credentials | Free — see setup below |
 
 ### 3. Create your local config
 
@@ -126,7 +127,48 @@ telegram:
 
 Alternatively, configure `email` in `config.local.yaml` to use SMTP delivery instead.
 
-### 4. Set up your candidate profile (optional but recommended)
+### 4. Set up LinkedIn Email Alerts (optional)
+
+This source reads LinkedIn job alert emails from your Gmail inbox using the Gmail API with `gmail.readonly` scope — read-only access only, no write/delete permissions possible.
+
+**Setup:**
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → create or select a project
+2. Enable the **Gmail API** (APIs & Services → Library → search "Gmail API")
+3. Create OAuth2 credentials (APIs & Services → Credentials → Create Credentials → OAuth client ID → Desktop app)
+4. Download the JSON file and save it as `gmail_credentials.json` in the project root
+5. Add to `config.local.yaml`:
+   ```yaml
+   linkedin_email:
+     credentials_path: "gmail_credentials.json"
+     token_path: "gmail_token.json"
+   ```
+6. In LinkedIn, set your job alert frequency to **Daily** — the pipeline runs once a day and only looks back `max_age_days` (default: 7), so weekly alerts may arrive after jobs have already expired
+7. On the first `python main.py --dry-run`, a browser window opens for OAuth2 consent — grant `gmail.readonly` access
+8. The token is saved to `gmail_token.json` and auto-refreshed on subsequent pipeline runs
+
+**For deployment on Railway:**
+
+Railway has no browser, so the interactive OAuth consent flow must be completed locally first (steps 1–7 above). The resulting files are then passed to Railway as environment variables — the pipeline writes them to the persistent volume on the first run.
+
+Prerequisites: you have both `gmail_credentials.json` and `gmail_token.json` on your machine.
+
+1. **Attach a persistent volume** to your Railway service (the same one used for `profile_match_cache.json`). Mount it at `/data`.
+
+2. **Set these environment variables** in the Railway dashboard:
+
+   | Variable | Value |
+   |----------|-------|
+   | `GMAIL_CREDENTIALS_PATH` | `/data/gmail_credentials.json` |
+   | `GMAIL_TOKEN_PATH` | `/data/gmail_token.json` |
+   | `GMAIL_CREDENTIALS_JSON` | Full contents of your local `gmail_credentials.json` |
+   | `GMAIL_TOKEN_JSON` | Full contents of your local `gmail_token.json` |
+
+   On the first run, the pipeline writes the JSON env vars to the configured paths on the volume. On subsequent runs the files already exist and are used directly. The token auto-refreshes and is written back to `/data/gmail_token.json`, so it stays valid indefinitely.
+
+Both credential files are gitignored — never committed.
+
+### 5. Set up your candidate profile (optional but recommended)
 
 The profile matcher uses Claude to score each job against your background. Without it, all jobs get a neutral profile score (50) and the pipeline still works.
 
@@ -246,6 +288,10 @@ All config values can be set as environment variables (useful for deployment wit
 | `ANTHROPIC_API_KEY` | `anthropic.api_key` |
 | `PROFILE_SUMMARY` | `profile_matcher.profile_summary` |
 | `PROFILE_MATCH_CACHE_PATH` | `profile_matcher.cache_path` |
+| `GMAIL_CREDENTIALS_PATH` | `linkedin_email.credentials_path` |
+| `GMAIL_TOKEN_PATH` | `linkedin_email.token_path` |
+| `GMAIL_CREDENTIALS_JSON` | Write credentials JSON to the credentials path on first run |
+| `GMAIL_TOKEN_JSON` | Write token JSON to the token path on first run |
 
 ## Adding a new source
 
@@ -284,6 +330,7 @@ The test suite runs fully offline — all external APIs and SMTP are mocked. Tes
 - `beautifulsoup4` — HTML scraping (StartupJobs)
 - `pytest` + `pytest-mock` — testing
 - `anthropic` — Claude Haiku API for profile match scoring
+- `google-api-python-client` + `google-auth-oauthlib` — Gmail API (LinkedIn email alerts)
 - **Telegram Bot API** — digest delivery
 - **Docker** — containerised deployment
 
