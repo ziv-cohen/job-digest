@@ -31,25 +31,29 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     region = search["locations"]["region"]
     # Combine all role titles with OR — Google Jobs (used by JSearch) supports this,
     # reducing API usage to 2 requests/run regardless of how many titles are configured.
-    titles_expr = " OR ".join(f'"{t}"' for t in role_titles)
-
     headers = {
         "x-rapidapi-key": api_key,
         "x-rapidapi-host": RAPIDAPI_HOST,
     }
 
-    # Two queries cover the entire title set: one for Prague, one for EMEA remote.
-    # Google Jobs (used by JSearch) supports OR operators in the query string.
+    # Split titles into OR groups — all titles in one OR query causes API timeouts,
+    # but small groups (≤3 titles) are reliable and keep monthly usage well under 200.
+    _GROUP = 4
+    groups = [role_titles[i:i + _GROUP] for i in range(0, len(role_titles), _GROUP)]
+    or_exprs = [" OR ".join(f'"{t}"' for t in g) for g in groups]
+
+    # country param is required — without it JSearch defaults to 'us', missing all EMEA results.
     queries = [
-        f"({titles_expr}) in {city}, {country}",
-        f"({titles_expr}) remote {region}",
+        (f"({expr}) in {city}, {country}", "cz") for expr in or_exprs
+    ] + [
+        (f"({expr}) remote {region}", "gb") for expr in or_exprs
     ]
-    logger.info("JSearch: running %d queries covering %d titles", len(queries), len(role_titles))
+    logger.info("JSearch: running %d queries (%d title groups × 2 locations)", len(queries), len(groups))
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age)
     all_jobs: list[Job] = []
 
-    for query in queries:
+    for query, api_country in queries:
         try:
             params = {
                 "query": query,
@@ -57,6 +61,7 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
                 "num_pages": "1",
                 "results_per_page": "20",
                 "date_posted": "week",          # only last 7 days
+                "country": api_country,
             }
             resp = requests.get(SEARCH_URL, headers=headers, params=params, timeout=15)
             resp.raise_for_status()

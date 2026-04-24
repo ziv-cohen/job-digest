@@ -153,10 +153,10 @@ def test_fetch_jobs_handles_request_error():
     assert jobs == []
 
 
-def test_fetch_jobs_makes_exactly_two_queries():
-    # All titles are combined with OR, so always exactly 2 queries (Prague + EMEA).
+def test_fetch_jobs_query_count_is_groups_times_two():
+    # Titles are grouped in batches of 4; each group × 2 locations = total queries.
     config = _make_config()
-    config["search"]["role_titles"] = ["em", "director", "vp", "cto"]
+    config["search"]["role_titles"] = ["em", "director", "vp", "cto", "head"]  # 5 titles → 2 groups
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"data": []}
@@ -165,13 +165,14 @@ def test_fetch_jobs_makes_exactly_two_queries():
     with patch("sources.jsearch.requests.get", return_value=mock_resp) as mock_get:
         fetch_jobs(config)
 
-    assert mock_get.call_count == 2
+    assert mock_get.call_count == 4  # ceil(5/4)=2 groups × 2 locations
 
 
-def test_fetch_jobs_combines_titles_with_or():
-    # All titles should appear in a single OR-combined query string.
+def test_fetch_jobs_or_groups_titles_correctly():
+    # Each OR group contains up to 4 titles joined with OR.
     config = _make_config()
-    config["search"]["role_titles"] = ["engineering manager", "engineering director"]
+    # 5 titles → 2 groups: first 4, then 1
+    config["search"]["role_titles"] = ["engineering manager", "engineering director", "vp engineering", "cto", "head of engineering"]
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"data": []}
@@ -180,10 +181,11 @@ def test_fetch_jobs_combines_titles_with_or():
     with patch("sources.jsearch.requests.get", return_value=mock_resp) as mock_get:
         fetch_jobs(config)
 
-    first_query = mock_get.call_args_list[0].kwargs["params"]["query"]
-    assert '"engineering manager"' in first_query
-    assert '"engineering director"' in first_query
-    assert " OR " in first_query
+    queries = [c.kwargs["params"]["query"] for c in mock_get.call_args_list]
+    # First group contains the first 4 titles joined with OR
+    assert '"engineering manager" OR "engineering director" OR "vp engineering" OR "cto"' in queries[0]
+    # Second group contains the remaining title
+    assert '"head of engineering"' in queries[1]
 
 
 def test_fetch_jobs_prague_and_emea_queries():
