@@ -142,6 +142,35 @@ def test_fetch_jobs_filters_old_jobs():
     assert jobs == []
 
 
+def test_fetch_jobs_paginates_when_full_page_returned():
+    # If a page returns exactly 50 results, the next page should be fetched.
+    recent = datetime.now(timezone.utc) - timedelta(days=1)
+    full_page = {"results": [_item(created=recent.isoformat())] * 50}
+    empty_page = {"results": []}
+
+    mock_resp_full = MagicMock()
+    mock_resp_full.json.return_value = full_page
+    mock_resp_full.raise_for_status.return_value = None
+
+    mock_resp_empty = MagicMock()
+    mock_resp_empty.json.return_value = empty_page
+    mock_resp_empty.raise_for_status.return_value = None
+
+    # Config with a single country and single title to keep call count predictable
+    config = _make_config()
+    config["search"]["role_titles"] = ["engineering director"]
+
+    with patch("sources.adzuna.COUNTRY_CODES", ["gb"]), \
+         patch("sources.adzuna.requests.get", side_effect=[mock_resp_full, mock_resp_empty]) as mock_get:
+        jobs = fetch_jobs(config)
+
+    # Should have fetched page 1 (50 results) and page 2 (0 results → stop)
+    urls_called = [c.args[0] for c in mock_get.call_args_list]
+    assert any("/search/1" in u for u in urls_called)
+    assert any("/search/2" in u for u in urls_called)
+    assert len(jobs) == 50
+
+
 def test_fetch_jobs_handles_request_error():
     import requests as req
     with patch("sources.adzuna.requests.get", side_effect=req.RequestException("timeout")):

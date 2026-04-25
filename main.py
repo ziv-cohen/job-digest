@@ -109,7 +109,7 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
             logger.info("Fetching from %s …", name)
             try:
                 jobs = fetcher(config)
-                logger.info("  → %d jobs fetched", len(jobs))
+                logger.info("  → %s: %d jobs fetched", name, len(jobs))
                 all_jobs.extend(jobs)
                 source_health.append(HealthStatus(name=name, ok=True))
             except SourceNotConfiguredError as exc:

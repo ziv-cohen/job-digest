@@ -35,33 +35,46 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
 
     all_jobs: list[Job] = []
 
+    _PER_PAGE = 50
+    _MAX_PAGES = 3  # cap at 150 results per country×title to avoid excessive calls
+
     for country in COUNTRY_CODES:
         for title in role_titles:
-            try:
-                params = {
-                    "app_id": app_id,
-                    "app_key": app_key,
-                    "results_per_page": 20,
-                    "what": title,
-                    "max_days_old": max_age,
-                    "content-type": "application/json",
-                    "sort_by": "date",
-                }
-                url = f"{BASE_URL}/{country}/search/1"
-                resp = requests.get(url, params=params, timeout=15)
-                resp.raise_for_status()
-                data = resp.json()
+            total_fetched = 0
+            for page in range(1, _MAX_PAGES + 1):
+                try:
+                    params = {
+                        "app_id": app_id,
+                        "app_key": app_key,
+                        "results_per_page": _PER_PAGE,
+                        "what": title,
+                        "max_days_old": max_age,
+                        "content-type": "application/json",
+                        "sort_by": "date",
+                    }
+                    url = f"{BASE_URL}/{country}/search/{page}"
+                    resp = requests.get(url, params=params, timeout=15)
+                    resp.raise_for_status()
+                    data = resp.json()
 
-                for item in data.get("results", []):
-                    job = _parse_job(item, country)
-                    if job and job.date_posted and job.date_posted >= cutoff:
-                        all_jobs.append(job)
+                    results = data.get("results", [])
+                    for item in results:
+                        job = _parse_job(item, country)
+                        if job and job.date_posted and job.date_posted >= cutoff:
+                            all_jobs.append(job)
 
-                count = len(data.get("results", []))
-                logger.info("Adzuna: country=%s title=%r returned %d results", country, title, count)
+                    total_fetched += len(results)
+                    logger.info("Adzuna: country=%s title=%r page=%d returned %d results",
+                                country, title, page, len(results))
 
-            except requests.RequestException as exc:
-                logger.error("Adzuna request failed: country=%s title=%r: %s", country, title, exc)
+                    # Stop paginating if this page wasn't full (no more results)
+                    if len(results) < _PER_PAGE:
+                        break
+
+                except requests.RequestException as exc:
+                    logger.error("Adzuna request failed: country=%s title=%r page=%d: %s",
+                                 country, title, page, exc)
+                    break
 
     return all_jobs
 
