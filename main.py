@@ -256,7 +256,7 @@ def _print_dry_run(jobs: list[Job], health: list[HealthStatus] | None = None) ->
         breakdown = " | ".join(f"{k}: {v:.0f}" for k, v in job.score_breakdown.items() if v > 0)
         print(f"     Score:    {breakdown}")
         if job.profile_match_rationale:
-            print(f"     Profile:  {job.profile_match_rationale}")
+            print(f"     Profile:  {job.profile_match_rationale[:400]}")
         print()
 
 

@@ -32,7 +32,7 @@ Score this job 0-100 for profile fit:
 - 70: good match (right level, relevant domain)
 - 90-100: excellent match (ideal role, strong signals for this candidate)
 
-Respond ONLY with valid JSON: {{"score": <int 0-100>, "rationale": "<one concise sentence max 200 chars>"}}"""
+Respond ONLY with valid JSON: {{"score": <int 0-100>, "rationale": "<2-3 concise sentences, max 350 chars — cover fit, red flags, and standout signals; do not pad or repeat>"}}"""
 
 
 def match_profile(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
@@ -145,7 +145,7 @@ def _call_api(client: Any, model: str, profile_summary: str, job: Job,
                            job.title, job.company, exc, raw[:200])
             return int(fallback_score), "", False
         score = max(0, min(100, int(data["score"])))
-        rationale = str(data.get("rationale", ""))[:220]
+        rationale = str(data.get("rationale", ""))[:400]
         logger.debug("Profile match for '%s @ %s': %d — %s", job.title, job.company, score, rationale)
         return score, rationale, True
     except Exception as exc:
