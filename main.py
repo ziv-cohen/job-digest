@@ -111,7 +111,7 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
                 jobs = fetcher(config)
                 logger.info("  → %s: %d jobs fetched", name, len(jobs))
                 all_jobs.extend(jobs)
-                source_health.append(HealthStatus(name=name, ok=True))
+                source_health.append(HealthStatus(name=name, ok=True, job_count=len(jobs)))
             except SourceNotConfiguredError as exc:
                 logger.warning("  → SKIPPED: %s", exc)
                 # omitted from health report — inactive, not broken
@@ -236,8 +236,12 @@ def _print_dry_run(jobs: list[Job], health: list[HealthStatus] | None = None) ->
     print(f"DRY RUN RESULTS — {len(jobs)} jobs passing threshold")
     print(f"{'='*80}\n")
     if health:
-        status_parts = [f"{'✅' if h.ok else '❌'} {h.name}" + (f" ({h.detail})" if not h.ok and h.detail else "")
-                        for h in health]
+        status_parts = [
+            f"{'✅' if h.ok else '❌'} {h.name}"
+            + (f" ({h.job_count})" if h.ok and h.job_count >= 0 else "")
+            + (f" ({h.detail})" if not h.ok and h.detail else "")
+            for h in health
+        ]
         print(f"Health:  {' · '.join(status_parts)}\n")
 
     for i, job in enumerate(jobs, 1):

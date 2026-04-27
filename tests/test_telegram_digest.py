@@ -150,6 +150,19 @@ def test_build_messages_health_footer_omits_detail_when_ok():
     assert "✅ Adzuna" in messages[-1]
     assert "(" not in messages[-1].split("🏥")[1]
 
+def test_build_messages_health_footer_shows_job_count():
+    jobs = [make_job()]
+    health = [HealthStatus("JSearch", ok=True, job_count=42)]
+    messages = _build_messages(jobs, health=health)
+    assert "✅ JSearch (42)" in messages[-1]
+
+def test_build_messages_health_footer_no_count_for_llm():
+    jobs = [make_job()]
+    health = [HealthStatus("LLM", ok=True)]  # job_count defaults to -1
+    messages = _build_messages(jobs, health=health)
+    assert "✅ LLM" in messages[-1]
+    assert "(-1)" not in messages[-1]
+
 
 # ── _build_messages ──────────────────────────────────────────────
 

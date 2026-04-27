@@ -18,7 +18,8 @@ class SourceNotConfiguredError(Exception):
 class HealthStatus:
     name: str
     ok: bool
-    detail: str = ""  # short error summary, empty when ok
+    detail: str = ""   # short error summary, empty when ok
+    job_count: int = -1  # raw jobs fetched; -1 means not applicable (e.g. LLM)
 
 
 def check_llm(config: dict[str, Any]) -> HealthStatus:

@@ -102,7 +102,9 @@ def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None,
 
     if health:
         parts = [
-            f"{'✅' if h.ok else '❌'} {h.name}" + (f" ({h.detail})" if not h.ok and h.detail else "")
+            f"{'✅' if h.ok else '❌'} {h.name}"
+            + (f" ({h.job_count})" if h.ok and h.job_count >= 0 else "")
+            + (f" ({h.detail})" if not h.ok and h.detail else "")
             for h in health
         ]
         footer = "\n\n<i>🏥 " + " · ".join(parts) + "</i>"
