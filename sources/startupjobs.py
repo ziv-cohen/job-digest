@@ -21,19 +21,11 @@ _COMPANY_TYPE = "product"
 # Map companyType → is_startup flag for growth signal hints
 _STARTUP_TYPES = {"start", "growth"}
 
-# Pages to fetch per query (20 results/page)
-_MAX_PAGES = 2
-
-_SEARCH_QUERIES = [
-    "engineering manager",
-    "CTO",
-    "director of engineering",
-    "head of engineering",
-    "VP engineering",
-]
+# Safety cap — the API has ~25 pages of listings (20 results/page = ~490 total)
+_MAX_PAGES = 30
 
 # Title must contain at least one of these to be considered relevant.
-# Prevents the API's broad text matching from returning e.g. "Head of Sales".
+# The API ignores keyword search (q= is silently ignored), so we filter locally.
 _TITLE_KEYWORDS = [
     "engineering", "cto", "chief technology", "vp eng", "vice president eng",
 ]
@@ -46,41 +38,39 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     all_jobs: list[Job] = []
     seen_ids: set[int] = set()
 
-    for query in _SEARCH_QUERIES:
-        for page in range(1, _MAX_PAGES + 1):
-            try:
-                resp = requests.get(
-                    API_URL,
-                    params={"q": query, "page": page, "limit": 20},
-                    headers={"Accept": "application/json"},
-                    timeout=15,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-            except requests.RequestException as exc:
-                logger.error("StartupJobs.cz request failed for query=%r page=%d: %s", query, page, exc)
-                break
+    for page in range(1, _MAX_PAGES + 1):
+        try:
+            resp = requests.get(
+                API_URL,
+                params={"page": page, "limit": 20},
+                headers={"Accept": "application/json"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.RequestException as exc:
+            logger.error("StartupJobs.cz request failed for page=%d: %s", page, exc)
+            break
 
-            items = data.get("resultSet", [])
-            if not items:
-                break
+        items = data.get("resultSet", [])
+        if not items:
+            break
 
-            for item in items:
-                job_id = item.get("id")
-                if job_id in seen_ids:
-                    continue
-                seen_ids.add(job_id)
+        for item in items:
+            job_id = item.get("id")
+            if job_id in seen_ids:
+                continue
+            seen_ids.add(job_id)
 
-                job = _parse_item(item, cutoff)
-                if job:
-                    all_jobs.append(job)
+            job = _parse_item(item, cutoff)
+            if job:
+                all_jobs.append(job)
 
-            paginator = data.get("paginator", {})
-            if page >= paginator.get("max", 1):
-                break
+        paginator = data.get("paginator", {})
+        if page >= paginator.get("max", 1):
+            break
 
-        logger.info("StartupJobs.cz: query=%r → %d jobs so far", query, len(all_jobs))
-
+    logger.info("StartupJobs.cz: %d relevant jobs from %d pages", len(all_jobs), page)
     return all_jobs
 
 

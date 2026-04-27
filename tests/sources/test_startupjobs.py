@@ -135,12 +135,12 @@ def test_fetch_jobs_returns_jobs():
         jobs = fetch_jobs(_make_config())
     assert len(jobs) > 0
 
-def test_fetch_jobs_deduplicates_across_queries():
+def test_fetch_jobs_deduplicates_across_pages():
     item = _make_item()
-    mock_resp = _make_api_response([item])
-    with patch("sources.startupjobs.requests.get", return_value=mock_resp):
+    page1 = _make_api_response([item], page=1, max_pages=2)
+    page2 = _make_api_response([item], page=2, max_pages=2)  # same item on page 2
+    with patch("sources.startupjobs.requests.get", side_effect=[page1, page2]):
         jobs = fetch_jobs(_make_config())
-    # Same item returned for all queries — should appear only once
     assert len(jobs) == 1
 
 def test_fetch_jobs_handles_request_error():
@@ -149,10 +149,8 @@ def test_fetch_jobs_handles_request_error():
     assert jobs == []
 
 def test_fetch_jobs_stops_at_last_page():
-    # Page 1 has results, page 2 should not be fetched (max=1)
+    # Paginator says max=1, so only page 1 should be fetched
     mock_resp = _make_api_response([_make_item()], page=1, max_pages=1)
     with patch("sources.startupjobs.requests.get", return_value=mock_resp) as mock_get:
         fetch_jobs(_make_config())
-    # Each query makes exactly 1 call (no page 2)
-    calls_per_query = [c for c in mock_get.call_args_list if c.kwargs.get("params", {}).get("page") == 1]
-    assert len(calls_per_query) == len(__import__('sources.startupjobs', fromlist=['_SEARCH_QUERIES'])._SEARCH_QUERIES)
+    assert mock_get.call_count == 1
