@@ -163,6 +163,21 @@ def test_build_messages_health_footer_no_count_for_llm():
     assert "✅ LLM" in messages[-1]
     assert "(-1)" not in messages[-1]
 
+def test_build_messages_health_footer_two_per_row():
+    jobs = [make_job()]
+    health = [
+        HealthStatus("A", ok=True),
+        HealthStatus("B", ok=True),
+        HealthStatus("C", ok=True),
+    ]
+    messages = _build_messages(jobs, health=health)
+    footer = messages[-1].split("🏥")[1]
+    lines = [l for l in footer.split("\n") if l.strip()]
+    # First line has 2 sources, second has 1
+    assert "A" in lines[0] and "B" in lines[0]
+    assert "C" in lines[1]
+    assert "C" not in lines[0]
+
 
 # ── _build_messages ──────────────────────────────────────────────
 

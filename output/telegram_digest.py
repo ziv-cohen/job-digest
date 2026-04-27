@@ -107,7 +107,8 @@ def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None,
             + (f" ({h.detail})" if not h.ok and h.detail else "")
             for h in health
         ]
-        footer = "\n\n<i>🏥 " + " · ".join(parts) + "</i>"
+        rows = [" · ".join(parts[i:i + 2]) for i in range(0, len(parts), 2)]
+        footer = "\n\n<i>🏥 " + "\n    ".join(rows) + "</i>"
         messages[-1] += footer
 
     return messages
