@@ -3,8 +3,8 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Railway cron: run daily at 8:00 AM UTC+1 (Prague) = 7:00 AM UTC
-cronSchedule = "0 7 * * *"
+# Railway cron: run daily at 8:00 AM CEST (UTC+2) = 6:00 AM UTC
+cronSchedule = "0 6 * * *"
 restartPolicyType = "NEVER"
 
 [deploy.healthcheck]
