@@ -113,3 +113,17 @@ def test_load_config_env_var_telegram_chat_id(tmp_path, monkeypatch):
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "987654321")
     config = load_config(tmp_path)
     assert config["telegram"]["chat_id"] == 987654321
+
+
+def test_load_config_ignored_urls_parsed_from_env(tmp_path, monkeypatch):
+    _write_yaml(tmp_path / "config.yaml", {})
+    monkeypatch.setenv("IGNORED_URLS", '["https://a.com/1", "https://b.com/2"]')
+    config = load_config(tmp_path)
+    assert config["pipeline"]["ignored_urls"] == ["https://a.com/1", "https://b.com/2"]
+
+
+def test_load_config_ignored_urls_malformed_env_ignored(tmp_path, monkeypatch):
+    _write_yaml(tmp_path / "config.yaml", {})
+    monkeypatch.setenv("IGNORED_URLS", "not-valid-json")
+    config = load_config(tmp_path)
+    assert config.get("pipeline", {}).get("ignored_urls") is None

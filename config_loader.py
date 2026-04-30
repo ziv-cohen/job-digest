@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,7 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
         "PROFILE_SUMMARY": ("profile_matcher", "profile_summary"),
         "PROFILE_MATCH_CACHE_PATH": ("profile_matcher", "cache_path"),
         "DIGEST_TIMEZONE": ("output", "timezone"),
+        "IGNORE_LIST_PATH": ("pipeline", "ignore_list_path"),
         "GMAIL_CREDENTIALS_PATH": ("linkedin_email", "credentials_path"),
         "GMAIL_TOKEN_PATH": ("linkedin_email", "token_path"),
     }
@@ -82,6 +84,14 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
             for part in path[:-1]:
                 node = node.setdefault(part, {})
             node[path[-1]] = int(value) if value.isdigit() else value
+
+    # Parse IGNORED_URLS env var (JSON array) — primary ignore mechanism on Railway
+    ignored_urls_raw = os.environ.get("IGNORED_URLS")
+    if ignored_urls_raw:
+        try:
+            config.setdefault("pipeline", {})["ignored_urls"] = json.loads(ignored_urls_raw)
+        except json.JSONDecodeError:
+            pass  # malformed env var — silently skip, don't break the pipeline
 
     # Write Gmail credential files from env vars if provided (Railway deployment)
     # GMAIL_CREDENTIALS_JSON / GMAIL_TOKEN_JSON let you store file contents as env vars

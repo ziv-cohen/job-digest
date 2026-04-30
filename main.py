@@ -32,6 +32,7 @@ from pipeline.deduplicator import deduplicate
 from pipeline.scorer import score_jobs, recompute_scores
 from pipeline.profile_matcher import match_profile
 from pipeline.health_check import HealthStatus, SourceNotConfiguredError, check_llm
+from pipeline.ignore_list import filter_jobs as filter_ignored, add_url as ignore_url
 from output.email_digest import send_digest as send_email_digest
 from output.telegram_digest import send_digest as send_telegram_digest
 
@@ -133,6 +134,11 @@ def run(dry_run: bool = False, sources_only: bool = False, score_only: bool = Fa
 
     # ── 2. Deduplicate ──
     unique_jobs = deduplicate(all_jobs, config)
+
+    # ── 2b. Ignore list ──
+    unique_jobs, ignored_count = filter_ignored(unique_jobs, config)
+    if ignored_count:
+        logger.info("Ignore list: %d job(s) removed", ignored_count)
 
     # ── 3. Rule-based scoring ──
     scored_jobs = score_jobs(unique_jobs, config)
@@ -261,6 +267,7 @@ def _print_dry_run(jobs: list[Job], health: list[HealthStatus] | None = None) ->
         print(f"     Score:    {breakdown}")
         if job.profile_match_rationale:
             print(f"     Profile:  {job.profile_match_rationale[:400]}")
+        print(f"     Ignore:   python main.py --ignore \"{job.url}\"")
         print()
 
 
@@ -270,8 +277,12 @@ def main():
     parser.add_argument("--sources-only", action="store_true", help="Fetch only, show counts per source")
     parser.add_argument("--score-only", action="store_true", help="Skip fetch, load from fetched_jobs.json cache")
     parser.add_argument("--resend", action="store_true", help="Re-send digest from dry_run_results.json (no API calls)")
+    parser.add_argument("--ignore", metavar="URL", help="Add a job URL to the ignore list and exit")
     args = parser.parse_args()
-    if args.resend:
+    if args.ignore:
+        config = load_config(Path(__file__).resolve().parent)
+        ignore_url(config, args.ignore)
+    elif args.resend:
         resend()
     else:
         run(dry_run=args.dry_run, sources_only=args.sources_only, score_only=args.score_only)

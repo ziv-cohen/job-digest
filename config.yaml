@@ -141,6 +141,10 @@ scoring:
     GBP: 80000
     PLN: 400000
 
+# --- Pipeline ---
+pipeline:
+  ignore_list_path: "ignored_jobs.json"  # local file; set IGNORED_URLS env var on Railway instead
+
 # --- Output ---
 output:
   max_jobs_in_digest: 0    # 0 = no limit, include all that pass min_score

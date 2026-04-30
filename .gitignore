@@ -5,6 +5,7 @@ config.local.yaml
 # Personal profile and LLM cache (never commit — deploy via PROFILE_SUMMARY env var)
 profile.md
 profile_match_cache.json
+ignored_jobs.json
 
 # Gmail API credentials (OAuth2 flow — never commit)
 gmail_credentials.json

@@ -240,7 +240,18 @@ python main.py --sources-only
 
 # Full run — fetch, score, send digest
 python main.py
+
+# Ignore a job — it will be excluded from all future runs
+python main.py --ignore "https://example.com/job/123"
 ```
+
+Ignored job URLs are stored in `ignored_jobs.json` locally (gitignored). Each job printed by `--dry-run` includes a ready-to-run ignore command.
+
+**On Railway:** manage the ignore list via the `IGNORED_URLS` environment variable in the Railway dashboard. Set it to a JSON array of URLs:
+```json
+["https://example.com/job/123", "https://example.com/job/456"]
+```
+The pipeline merges `IGNORED_URLS` with the local file on every run.
 
 ## Deployment
 
