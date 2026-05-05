@@ -137,15 +137,16 @@ This source reads LinkedIn job alert emails from your Gmail inbox using the Gmai
 2. Enable the **Gmail API** (APIs & Services → Library → search "Gmail API")
 3. Create OAuth2 credentials (APIs & Services → Credentials → Create Credentials → OAuth client ID → Desktop app)
 4. Download the JSON file and save it as `gmail_credentials.json` in the project root
-5. Add to `config.local.yaml`:
+5. **Publish the OAuth app** (APIs & Services → OAuth consent screen → **Publish App**). This is required — apps left in "Testing" status have refresh tokens that expire after 7 days, breaking the pipeline silently. Publishing doesn't make your app publicly listed; it just removes the sandbox restriction. You'll see a "not verified" warning on the consent screen, which is fine for personal use.
+6. Add to `config.local.yaml`:
    ```yaml
    linkedin_email:
      credentials_path: "gmail_credentials.json"
      token_path: "gmail_token.json"
    ```
-6. In LinkedIn, set your job alert frequency to **Daily** — the pipeline runs once a day and only looks back `max_age_days` (default: 7), so weekly alerts may arrive after jobs have already expired
-7. On the first `python main.py --dry-run`, a browser window opens for OAuth2 consent — grant `gmail.readonly` access
-8. The token is saved to `gmail_token.json` and auto-refreshed on subsequent pipeline runs
+7. In LinkedIn, set your job alert frequency to **Daily** — the pipeline runs once a day and only looks back `max_age_days` (default: 7), so weekly alerts may arrive after jobs have already expired
+8. On the first `python main.py --dry-run`, a browser window opens for OAuth2 consent — grant `gmail.readonly` access
+9. The token is saved to `gmail_token.json` and auto-refreshed on subsequent pipeline runs
 
 **For deployment on Railway:**
 

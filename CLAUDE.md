@@ -60,6 +60,7 @@ Can also run locally via Windows Task Scheduler.
 - Scoring weights are fully configurable in `config.yaml`
 - The pipeline is idempotent — safe to run multiple times per day
 - **README.md must be kept up to date.** Any commit that changes user-facing behaviour (new features, new env vars, changed scoring, new setup steps) must include a corresponding README update in the same commit.
+- **Gmail OAuth app must be published ("In production"), not left in "Testing" status.** Testing-mode apps have refresh tokens that expire after 7 days, silently breaking the LinkedIn email source. Publishing removes this restriction — it does not make the app publicly listed.
 
 ## Testing
 - Every module with logic must have a corresponding `tests/test_<module>.py`
