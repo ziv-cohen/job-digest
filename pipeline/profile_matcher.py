@@ -32,7 +32,7 @@ Score this job 0-100 for profile fit:
 - 70: good match (right level, relevant domain)
 - 90-100: excellent match (ideal role, strong signals for this candidate)
 
-Respond ONLY with valid JSON: {{"score": <int 0-100>, "rationale": "<2-3 concise sentences — cover fit, red flags, and standout signals>"}}"""
+Respond ONLY with valid JSON: {{"score": <int 0-100>, "rationale": "<2-3 concise sentences, max 350 chars — cover fit, red flags, and standout signals>"}}"""
 
 
 def match_profile(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
