@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import requests
 
 from models import Job
-from pipeline.health_check import HealthStatus
+from pipeline.health_check import HealthStatus, status_emoji
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None,
 
     if health:
         parts = [
-            f"{'✅' if h.ok else '❌'} {h.name}"
+            f"{status_emoji(h)} {h.name}"
             + (f" ({h.job_count})" if h.ok and h.job_count >= 0 else "")
             + (f" ({h.detail})" if not h.ok and h.detail else "")
             for h in health

@@ -1,6 +1,6 @@
 """Unit tests for pipeline/health_check.py"""
 
-from pipeline.health_check import HealthStatus, SourceNotConfiguredError, check_llm
+from pipeline.health_check import HealthStatus, SourceNotConfiguredError, check_llm, status_emoji
 
 
 def _make_config(api_key="sk-real-key"):
@@ -39,6 +39,22 @@ def test_check_llm_empty_key():
 def test_check_llm_missing_section():
     h = check_llm({})
     assert h.ok is False
+
+
+# ── status_emoji ─────────────────────────────────────────────────
+
+def test_status_emoji_ok():
+    assert status_emoji(HealthStatus(name="X", ok=True, job_count=5)) == "✅"
+
+def test_status_emoji_ok_no_job_count_sentinel():
+    # job_count=-1 means "not a job source" (e.g. LLM) — must not trigger the zero-jobs warning
+    assert status_emoji(HealthStatus(name="LLM", ok=True, job_count=-1)) == "✅"
+
+def test_status_emoji_zero_jobs():
+    assert status_emoji(HealthStatus(name="X", ok=True, job_count=0)) == "⚠️"
+
+def test_status_emoji_error():
+    assert status_emoji(HealthStatus(name="X", ok=False, detail="timeout")) == "❌"
 
 
 # ── SourceNotConfiguredError ─────────────────────────────────────

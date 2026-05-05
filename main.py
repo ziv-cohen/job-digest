@@ -31,7 +31,7 @@ from sources import jsearch, adzuna, remotive, startupjobs, linkedin_email
 from pipeline.deduplicator import deduplicate
 from pipeline.scorer import score_jobs, recompute_scores
 from pipeline.profile_matcher import match_profile
-from pipeline.health_check import HealthStatus, SourceNotConfiguredError, check_llm
+from pipeline.health_check import HealthStatus, SourceNotConfiguredError, check_llm, status_emoji
 from pipeline.ignore_list import filter_jobs as filter_ignored, add_url as ignore_url
 from output.email_digest import send_digest as send_email_digest
 from output.telegram_digest import send_digest as send_telegram_digest
@@ -243,7 +243,7 @@ def _print_dry_run(jobs: list[Job], health: list[HealthStatus] | None = None) ->
     print(f"{'='*80}\n")
     if health:
         status_parts = [
-            f"{'✅' if h.ok else '❌'} {h.name}"
+            f"{status_emoji(h)} {h.name}"
             + (f" ({h.job_count})" if h.ok and h.job_count >= 0 else "")
             + (f" ({h.detail})" if not h.ok and h.detail else "")
             for h in health

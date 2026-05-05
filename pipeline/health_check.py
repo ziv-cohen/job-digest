@@ -22,6 +22,19 @@ class HealthStatus:
     job_count: int = -1  # raw jobs fetched; -1 means not applicable (e.g. LLM)
 
 
+def status_emoji(h: HealthStatus) -> str:
+    """Return ✅, ⚠️, or ❌ for a HealthStatus.
+
+    ⚠️ when the source ran without error but fetched 0 jobs — likely a broken
+    API or misconfigured query, worth investigating even though it's not a hard failure.
+    """
+    if not h.ok:
+        return "❌"
+    if h.job_count == 0:
+        return "⚠️"
+    return "✅"
+
+
 def check_llm(config: dict[str, Any]) -> HealthStatus:
     """Return LLM health based on whether the API key is configured."""
     api_key = config.get("anthropic", {}).get("api_key", "")
