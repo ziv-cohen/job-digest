@@ -44,6 +44,9 @@ search:
     primary_city: "Prague"
     country: "Czech Republic"
     region: "EMEA"
+    relocation_targets:          # on-site/hybrid acceptable with relocation (lowercase, matched against job location)
+      - "dublin"
+      - "ireland"                # catches "Dublin, Ireland" format
 
   # Max job age in days — older jobs are discarded entirely
   max_age_days: 7
@@ -95,6 +98,7 @@ scoring:
 
   location_fit:
     prague_onsite_hybrid: 100
+    relocation_onsite: 85        # on-site/hybrid at a relocation target city
     emea_remote: 100       # same as Prague — higher salaries compensate
     worldwide_remote: 90   # remote but region unspecified — slight discount for uncertainty
     czech_remote: 80       # Czech salaries are lower than West Europe, so for remote - Czech is in lower priority
@@ -128,6 +132,7 @@ scoring:
     freelancer_friendly: 40  # "freelance", "contractor", "B2B", "IČO"
     salary_mentioned: 25     # any salary info disclosed
     growth_signals: 35       # "series A/B/C", "fast-growing", "scaling", "hypergrowth"
+    relocation_support: 30   # "relocation package", "moving allowance", etc. (logistics only — no visa keywords)
 
   # Minimum score to include in digest (out of 100)
   min_score: 40

@@ -30,6 +30,7 @@ def scoring_cfg():
         },
         "location_fit": {
             "prague_onsite_hybrid": 100,
+            "relocation_onsite": 85,
             "emea_remote": 100,
             "worldwide_remote": 90,
             "czech_remote": 80,
@@ -63,6 +64,7 @@ def scoring_cfg():
             "freelancer_friendly": 40,
             "salary_mentioned": 25,
             "growth_signals": 35,
+            "relocation_support": 30,
         },
         "min_score": 40,
     }

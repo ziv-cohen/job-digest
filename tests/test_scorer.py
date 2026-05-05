@@ -419,6 +419,59 @@ def test_conditions_none(scoring_cfg):
     job.has_growth_signals = False
     assert _score_conditions(job, scoring_cfg) == 0
 
+def test_conditions_relocation_package(scoring_cfg):
+    job = make_job(description="We offer a full relocation package for candidates moving to Dublin.")
+    job.has_growth_signals = False
+    assert _score_conditions(job, scoring_cfg) == 30
+
+def test_conditions_relocation_assistance(scoring_cfg):
+    job = make_job(description="Relocation assistance available.")
+    job.has_growth_signals = False
+    assert _score_conditions(job, scoring_cfg) == 30
+
+def test_conditions_moving_allowance(scoring_cfg):
+    job = make_job(description="Moving allowance provided for international hires.")
+    job.has_growth_signals = False
+    assert _score_conditions(job, scoring_cfg) == 30
+
+def test_conditions_no_relocation_keywords(scoring_cfg):
+    job = make_job(description="Great opportunity at a growing company.")
+    job.has_growth_signals = False
+    assert _score_conditions(job, scoring_cfg) == 0
+
+
+# ── _score_location — relocation targets ────────────────────────
+
+RELOCATION_TARGETS = ["dublin", "ireland"]
+
+def test_location_relocation_target_onsite_scores_85(scoring_cfg):
+    job = make_job(location="Dublin, Ireland", is_remote=False)
+    assert _score_location(job, scoring_cfg, RELOCATION_TARGETS) == 85
+
+def test_location_relocation_target_matched_by_country(scoring_cfg):
+    # "Ireland" alone (e.g. some APIs omit city) still matches
+    job = make_job(location="Ireland", is_remote=False)
+    assert _score_location(job, scoring_cfg, RELOCATION_TARGETS) == 85
+
+def test_location_relocation_target_not_filtered_as_distant_onsite(scoring_cfg):
+    job = make_job(location="Dublin, Ireland", is_remote=False)
+    assert _score_location(job, scoring_cfg, RELOCATION_TARGETS) > 0
+
+def test_location_non_relocation_city_still_distant_onsite(scoring_cfg):
+    # London is NOT in relocation_targets — should still score 0
+    job = make_job(location="London, UK", is_remote=False)
+    assert _score_location(job, scoring_cfg, RELOCATION_TARGETS) == 0
+
+def test_location_empty_relocation_targets_unchanged(scoring_cfg):
+    # Empty list → Dublin still treated as distant_onsite
+    job = make_job(location="Dublin, Ireland", is_remote=False)
+    assert _score_location(job, scoring_cfg, []) == 0
+
+def test_location_relocation_target_remote_still_uses_emea_tier(scoring_cfg):
+    # Dublin + EMEA remote should score via emea_remote (100), not relocation_onsite (85)
+    job = make_job(location="Dublin, Ireland", is_remote=True, remote_region="EMEA")
+    assert _score_location(job, scoring_cfg, RELOCATION_TARGETS) == 100
+
 
 # ── score_jobs (integration) ─────────────────────────────────────
 

@@ -26,7 +26,8 @@ def score_jobs(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
         breakdown: dict[str, float] = {}
         breakdown["profile_match"] = 0.0  # filled later by match_profile
         breakdown["title"] = _score_title(job, scoring_cfg)
-        breakdown["location"] = _score_location(job, scoring_cfg)
+        relocation_targets = config.get("search", {}).get("locations", {}).get("relocation_targets", [])
+        breakdown["location"] = _score_location(job, scoring_cfg, relocation_targets)
         breakdown["company_type"] = _score_company_type(job, scoring_cfg)
         breakdown["seniority"] = _score_seniority(job, scoring_cfg)
         breakdown["freshness"] = _score_freshness(job, scoring_cfg)
@@ -157,7 +158,7 @@ def _is_hybrid(job: Job) -> bool:
     return "hybrid" in (job.description or "").lower()
 
 
-def _score_location(job: Job, cfg: dict) -> float:
+def _score_location(job: Job, cfg: dict, relocation_targets: list[str] | None = None) -> float:
     loc_cfg = cfg["location_fit"]
     loc_lower = (job.location or "").lower()
 
@@ -199,6 +200,10 @@ def _score_location(job: Job, cfg: dict) -> float:
         if not job.is_remote and not is_hybrid:
             return loc_cfg["distant_onsite"]
         return loc_cfg["commute_4hr"]
+
+    # Relocation targets — on-site/hybrid acceptable with relocation
+    if relocation_targets and any(t in loc_lower for t in relocation_targets):
+        return loc_cfg["relocation_onsite"]
 
     # API-tagged remote but no region info
     if job.is_remote:
@@ -334,6 +339,12 @@ def _score_conditions(job: Job, cfg: dict) -> float:
     # Growth signals (pre-computed in score_jobs)
     if job.has_growth_signals:
         score += cond_cfg["growth_signals"]
+
+    # Relocation support — logistics keywords only; visa keywords excluded (EU candidates don't need them)
+    relocation_kw = ["relocation package", "relocation support", "relocation assistance",
+                     "relo package", "moving allowance", "moving expenses"]
+    if any(kw in text for kw in relocation_kw):
+        score += cond_cfg.get("relocation_support", 0)
 
     return min(score, 100.0)
 

@@ -19,7 +19,8 @@ Target roles: [e.g. Engineering Director, VP Engineering, Senior Engineering Man
 Strong preference for: software product companies (SaaS/B2B), [relevant domains].
 Fast-growing or scaling companies preferred.
 
-Location: [City, Country] (on-site or hybrid) OR [region] remote. Both are equal priority.
+Location: [City, Country] (on-site or hybrid) OR [City2, Country2] (open to relocation) OR [region] remote.
+Both on-site options and remote are equal priority.
 Not interested in: outsourcing, consulting, agencies, staffing, hardware, embedded.
 
 Strengths: [key strengths].
