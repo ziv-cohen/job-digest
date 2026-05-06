@@ -28,7 +28,6 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     max_age = search["max_age_days"]
     city = search["locations"]["primary_city"]
     country = search["locations"]["country"]
-    region = search["locations"]["region"]
     # Combine all role titles with OR — Google Jobs (used by JSearch) supports this,
     # reducing API usage to 2 requests/run regardless of how many titles are configured.
     headers = {
@@ -43,10 +42,11 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     or_exprs = [" OR ".join(f'"{t}"' for t in g) for g in groups]
 
     # country param is required — without it JSearch defaults to 'us', missing all EMEA results.
+    # country=cz and country=gb are broken in the JSearch API (return 0 results); use country=de instead.
     queries = [
-        (f"({expr}) in {city}, {country}", "cz") for expr in or_exprs
+        (f"({expr}) in {city}, {country}", "de") for expr in or_exprs
     ] + [
-        (f"({expr}) remote {region}", "gb") for expr in or_exprs
+        (f"({expr}) remote Europe", "de") for expr in or_exprs
     ]
     logger.info("JSearch: running %d queries (%d title groups × 2 locations)", len(queries), len(groups))
 
