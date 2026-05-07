@@ -32,6 +32,14 @@ Score this job 0-100 for profile fit:
 - 70: good match (right level, relevant domain)
 - 90-100: excellent match (ideal role, strong signals for this candidate)
 
+LOCATION GUIDANCE (do not penalise these):
+- Prague on-site/hybrid = ideal
+- Remote in Europe (any European country including UK, Germany, France, Netherlands, Israel, etc.) = ideal, treat the same as Prague on-site
+- Worldwide remote = good, slight uncertainty about region requirement
+- Hybrid within ~2h of Prague (Czech cities, Dresden) = acceptable
+- Hybrid within ~4h of Prague (Berlin, Vienna, Bratislava, Wrocław, Ostrava) = possible but a weaker signal
+- 100% on-site anywhere outside Prague, or on-site far away with no relocation mention = negative signal
+
 Respond ONLY with valid JSON: {{"score": <int 0-100>, "rationale": "<2-3 concise sentences, max 350 chars — cover fit, red flags, and standout signals>"}}"""
 
 
@@ -111,7 +119,11 @@ def _call_api(client: Any, model: str, profile_summary: str, job: Job,
     On API or parse error, success=False and score=fallback_score. Callers
     should not cache failed responses so a retry on the next run is possible.
     """
-    remote_tag = " (Remote)" if job.is_remote else ""
+    if job.is_remote:
+        region_label = job.remote_region if job.remote_region else "region unspecified"
+        remote_tag = f" (Remote — {region_label})"
+    else:
+        remote_tag = ""
     salary = job.salary_text or "Not disclosed"
     description = (job.description or "")[:3000]
 
