@@ -101,6 +101,31 @@ def test_filter_jobs_respects_ignored_urls_from_config(tmp_path):
     assert removed == 1
     assert kept[0].url == "https://example.com/job/2"
 
+def test_filter_jobs_prefix_matches_url_with_query_params(tmp_path):
+    # Store base URL without query params — must match URL with tracking params
+    config = _make_config(str(tmp_path / "ignored.json"))
+    save(_get_path(config), {"https://www.adzuna.nl/details/5719958471"})
+    jobs = [_make_job("https://www.adzuna.nl/details/5719958471?utm_medium=api&utm_source=abc")]
+    kept, removed = filter_jobs(jobs, config)
+    assert removed == 1
+    assert kept == []
+
+def test_filter_jobs_prefix_from_env_var_matches_with_query_params(tmp_path):
+    config = _make_config(str(tmp_path / "missing.json"))
+    config["pipeline"]["ignored_urls"] = ["https://example.com/job/42"]
+    jobs = [_make_job("https://example.com/job/42?ref=api&source=digest")]
+    kept, removed = filter_jobs(jobs, config)
+    assert removed == 1
+    assert kept == []
+
+def test_filter_jobs_prefix_does_not_match_different_job(tmp_path):
+    # A full job URL stored as prefix must not match a completely different URL
+    config = _make_config(str(tmp_path / "ignored.json"))
+    save(_get_path(config), {"https://example.com/job/1"})
+    jobs = [_make_job("https://example.com/job/2")]
+    kept, removed = filter_jobs(jobs, config)
+    assert removed == 0
+
 def test_filter_jobs_merges_file_and_env_sources(tmp_path):
     # The two ignore sources are independent and merged at filter time:
     # - save() writes job/1 to the on-disk JSON file (local --ignore flag source)

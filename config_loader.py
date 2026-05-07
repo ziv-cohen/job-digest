@@ -90,8 +90,9 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
     if ignored_urls_raw:
         try:
             config.setdefault("pipeline", {})["ignored_urls"] = json.loads(ignored_urls_raw)
-        except json.JSONDecodeError:
-            pass  # malformed env var — silently skip, don't break the pipeline
+        except json.JSONDecodeError as exc:
+            import logging
+            logging.getLogger(__name__).warning("IGNORED_URLS env var is not valid JSON, ignoring: %s", exc)
 
     # Write Gmail credential files from env vars if provided (Railway deployment)
     # GMAIL_CREDENTIALS_JSON / GMAIL_TOKEN_JSON let you store file contents as env vars

@@ -47,6 +47,9 @@ def filter_jobs(jobs: list, config: dict) -> tuple[list, int]:
     Ignored URLs come from two sources (union):
     - ignored_jobs.json (local file, managed via --ignore flag)
     - IGNORED_URLS env var (JSON array, managed via Railway dashboard)
+
+    Matching is prefix-based: an ignored entry matches any job URL that starts
+    with it. Store just the base URL (no query params) to ignore all variants.
     """
     path = _get_path(config)
     ignored = load(path)
@@ -54,7 +57,7 @@ def filter_jobs(jobs: list, config: dict) -> tuple[list, int]:
     if not ignored:
         return jobs, 0
     before = len(jobs)
-    kept = [j for j in jobs if j.url not in ignored]
+    kept = [j for j in jobs if not any(j.url.startswith(prefix) for prefix in ignored)]
     return kept, before - len(kept)
 
 
