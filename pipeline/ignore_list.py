@@ -52,8 +52,11 @@ def filter_jobs(jobs: list, config: dict) -> tuple[list, int]:
     with it. Store just the base URL (no query params) to ignore all variants.
     """
     path = _get_path(config)
-    ignored = load(path)
-    ignored |= set(config.get("pipeline", {}).get("ignored_urls", []))
+    from_file = load(path)
+    from_env = set(config.get("pipeline", {}).get("ignored_urls", []))
+    ignored = from_file | from_env
+    logger.info("Ignore list: %d URL(s) loaded (%d from file, %d from env var)",
+                len(ignored), len(from_file), len(from_env))
     if not ignored:
         return jobs, 0
     before = len(jobs)
