@@ -37,10 +37,18 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     # coverage for CZ); those roles are covered by Adzuna and StartupJobs instead.
     # country=de is required — without it JSearch defaults to 'us', missing European results.
     # country=gb and country=cz are broken in the JSearch API (return 0).
-    # Free tier: 200 requests/month. With 8 role titles this is ~240/month — remove
-    # rarely-matched titles (e.g. "co-founder CTO") from config to stay under 200.
-    queries = [(f"{title} remote Europe", "de") for title in role_titles]
-    logger.info("JSearch: running %d queries (1 per title, remote Europe)", len(queries))
+    #
+    # Some role_titles are semantically covered by a broader sibling — skip them to stay
+    # within the 200 requests/month free tier (~5 queries/day = 150/month).
+    _REDUNDANT = {
+        "director of engineering",    # covered by "engineering director"
+        "senior engineering manager", # covered by "engineering manager"
+        "co-founder cto",             # covered by "founding cto"
+    }
+    deduped_titles = [t for t in role_titles if t.lower() not in _REDUNDANT]
+    queries = [(f"{title} remote Europe", "de") for title in deduped_titles]
+    logger.info("JSearch: running %d queries (1 per title, remote Europe; %d redundant titles skipped)",
+                len(queries), len(role_titles) - len(deduped_titles))
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age)
     all_jobs: list[Job] = []
