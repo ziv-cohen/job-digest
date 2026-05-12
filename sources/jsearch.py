@@ -26,29 +26,21 @@ def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     search = config["search"]
     role_titles = search["role_titles"]
     max_age = search["max_age_days"]
-    city = search["locations"]["primary_city"]
-    country = search["locations"]["country"]
-    # Combine all role titles with OR — Google Jobs (used by JSearch) supports this,
-    # reducing API usage to 2 requests/run regardless of how many titles are configured.
     headers = {
         "x-rapidapi-key": api_key,
         "x-rapidapi-host": RAPIDAPI_HOST,
     }
 
-    # Split titles into OR groups — all titles in one OR query causes API timeouts,
-    # but small groups (≤3 titles) are reliable and keep monthly usage well under 200.
-    _GROUP = 4
-    groups = [role_titles[i:i + _GROUP] for i in range(0, len(role_titles), _GROUP)]
-    or_exprs = [" OR ".join(f'"{t}"' for t in g) for g in groups]
-
-    # country param is required — without it JSearch defaults to 'us', missing all EMEA results.
-    # country=cz and country=gb are broken in the JSearch API (return 0 results); use country=de instead.
-    queries = [
-        (f"({expr}) in {city}, {country}", "de") for expr in or_exprs
-    ] + [
-        (f"({expr}) remote Europe", "de") for expr in or_exprs
-    ]
-    logger.info("JSearch: running %d queries (%d title groups × 2 locations)", len(queries), len(groups))
+    # One query per title, remote Europe only.
+    # OR grouping was tried but is unreliable in JSearch — returns 0 even when individual
+    # titles get results. Prague/CZ queries also consistently return 0 (poor Google Jobs
+    # coverage for CZ); those roles are covered by Adzuna and StartupJobs instead.
+    # country=de is required — without it JSearch defaults to 'us', missing European results.
+    # country=gb and country=cz are broken in the JSearch API (return 0).
+    # Free tier: 200 requests/month. With 8 role titles this is ~240/month — remove
+    # rarely-matched titles (e.g. "co-founder CTO") from config to stay under 200.
+    queries = [(f"{title} remote Europe", "de") for title in role_titles]
+    logger.info("JSearch: running %d queries (1 per title, remote Europe)", len(queries))
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=max_age)
     all_jobs: list[Job] = []

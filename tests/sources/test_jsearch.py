@@ -153,10 +153,10 @@ def test_fetch_jobs_handles_request_error():
     assert jobs == []
 
 
-def test_fetch_jobs_query_count_is_groups_times_two():
-    # Titles are grouped in batches of 4; each group × 2 locations = total queries.
+def test_fetch_jobs_one_query_per_title():
+    # One query is issued per role title (no OR grouping).
     config = _make_config()
-    config["search"]["role_titles"] = ["em", "director", "vp", "cto", "head"]  # 5 titles → 2 groups
+    config["search"]["role_titles"] = ["engineering director", "engineering manager", "VP engineering"]
 
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"data": []}
@@ -165,31 +165,11 @@ def test_fetch_jobs_query_count_is_groups_times_two():
     with patch("sources.jsearch.requests.get", return_value=mock_resp) as mock_get:
         fetch_jobs(config)
 
-    assert mock_get.call_count == 4  # ceil(5/4)=2 groups × 2 locations
+    assert mock_get.call_count == 3
 
 
-def test_fetch_jobs_or_groups_titles_correctly():
-    # Each OR group contains up to 4 titles joined with OR.
-    config = _make_config()
-    # 5 titles → 2 groups: first 4, then 1
-    config["search"]["role_titles"] = ["engineering manager", "engineering director", "vp engineering", "cto", "head of engineering"]
-
-    mock_resp = MagicMock()
-    mock_resp.json.return_value = {"data": []}
-    mock_resp.raise_for_status.return_value = None
-
-    with patch("sources.jsearch.requests.get", return_value=mock_resp) as mock_get:
-        fetch_jobs(config)
-
-    queries = [c.kwargs["params"]["query"] for c in mock_get.call_args_list]
-    # First group contains the first 4 titles joined with OR
-    assert '"engineering manager" OR "engineering director" OR "vp engineering" OR "cto"' in queries[0]
-    # Second group contains the remaining title
-    assert '"head of engineering"' in queries[1]
-
-
-def test_fetch_jobs_prague_and_emea_queries():
-    # First query targets Prague, second targets EMEA remote.
+def test_fetch_jobs_queries_target_remote_europe():
+    # All queries target remote Europe — Prague is not queried (consistently returns 0).
     config = _make_config()
 
     mock_resp = MagicMock()
@@ -200,7 +180,24 @@ def test_fetch_jobs_prague_and_emea_queries():
         fetch_jobs(config)
 
     queries = [c.kwargs["params"]["query"] for c in mock_get.call_args_list]
-    assert any("Prague" in q for q in queries)
-    assert any("remote" in q for q in queries)
+    assert all("remote Europe" in q for q in queries)
+    assert all("Prague" not in q for q in queries)
+
+
+def test_fetch_jobs_query_contains_title():
+    # Each query starts with the role title.
+    config = _make_config()
+    config["search"]["role_titles"] = ["engineering director", "VP engineering"]
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"data": []}
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("sources.jsearch.requests.get", return_value=mock_resp) as mock_get:
+        fetch_jobs(config)
+
+    queries = [c.kwargs["params"]["query"] for c in mock_get.call_args_list]
+    assert any("engineering director" in q for q in queries)
+    assert any("VP engineering" in q for q in queries)
 
 
