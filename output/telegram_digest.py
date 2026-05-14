@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 from datetime import datetime
 from typing import Any
@@ -102,9 +103,9 @@ def _build_messages(jobs: list[Job], weights: dict[str, int] | None = None,
 
     if health:
         parts = [
-            f"{status_emoji(h)} {h.name}"
+            f"{status_emoji(h)} {html.escape(h.name)}"
             + (f" ({h.job_count})" if h.ok and h.job_count >= 0 else "")
-            + (f" ({h.detail})" if not h.ok and h.detail else "")
+            + (f" ({html.escape(h.detail)})" if not h.ok and h.detail else "")
             for h in health
         ]
         rows = [" · ".join(parts[i:i + 2]) for i in range(0, len(parts), 2)]
@@ -153,18 +154,19 @@ def _format_job(rank: int, job: Job) -> str:
                 continue
             breakdown_parts.append(f"{emoji} {label} {round(score)}")
 
+    e = html.escape
     lines = [
-        f"\n<b>#{rank} [{job.score:.0f}%] <a href=\"{job.url}\">{job.title}</a></b>",
-        f"🏢 {job.company}",
-        f"📍 {location}",
-        f"💰 {salary}",
+        f"\n<b>#{rank} [{job.score:.0f}%] <a href=\"{job.url}\">{e(job.title)}</a></b>",
+        f"🏢 {e(job.company)}",
+        f"📍 {e(location)}",
+        f"💰 {e(salary)}",
     ]
     if meta:
-        lines.append(f"🏷 {meta}")
+        lines.append(f"🏷 {e(meta)}")
     if breakdown_parts:
         lines.append(f"📊 {' · '.join(breakdown_parts)}")
     if job.profile_match_rationale:
-        lines.append(f"🤖 {job.profile_match_rationale}")
+        lines.append(f"🤖 {e(job.profile_match_rationale)}")
     lines.append(f"🕐 {date} · {job.source.title()}")
 
     return "\n".join(lines) + "\n"
