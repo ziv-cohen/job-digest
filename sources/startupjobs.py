@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -29,6 +30,9 @@ _MAX_PAGES = 30
 _TITLE_KEYWORDS = [
     "engineering", "cto", "chief technology", "vp eng", "vice president eng",
 ]
+
+# Pre-compiled pattern for stripping HTML tags in description text
+_RE_HTML_TAG = re.compile(r"<[^>]+>")
 
 
 def fetch_jobs(config: dict[str, Any]) -> list[Job]:
@@ -141,5 +145,4 @@ def _parse_salary(salary: dict | None) -> tuple[float | None, float | None, str]
 
 def _strip_html(html: str) -> str:
     """Remove HTML tags for plain-text description."""
-    import re
-    return re.sub(r"<[^>]+>", " ", html).strip()
+    return _RE_HTML_TAG.sub(" ", html).strip()

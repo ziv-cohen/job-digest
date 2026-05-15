@@ -59,7 +59,7 @@ def _build_html(jobs: list[Job], now: datetime | None = None) -> str:
     """Generate the HTML email body."""
     today = (now or datetime.now()).strftime("%A, %d %B %Y")
 
-    rows = ""
+    row_parts: list[str] = []
     for i, job in enumerate(jobs, 1):
         # Score badge color
         if job.score >= 70:
@@ -114,7 +114,7 @@ def _build_html(jobs: list[Job], now: datetime | None = None) -> str:
         breakdown_parts = [f"{k}: {v:.0f}" for k, v in job.score_breakdown.items() if v > 0]
         breakdown_text = " | ".join(breakdown_parts)
 
-        rows += f"""
+        row_parts.append(f"""
         <tr style="border-bottom: 1px solid #e8e6df;">
           <td style="padding: 16px 12px; vertical-align: top; width: 50px; text-align: center;">
             <div style="background: {badge_bg}; color: {badge_fg}; font-weight: 600;
@@ -140,7 +140,8 @@ def _build_html(jobs: list[Job], now: datetime | None = None) -> str:
             </div>
           </td>
         </tr>
-        """
+        """)
+    rows = "\n".join(row_parts)
 
     return f"""<!DOCTYPE html>
 <html>

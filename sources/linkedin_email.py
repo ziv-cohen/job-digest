@@ -26,6 +26,21 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 _LINKEDIN_SENDERS = ["jobs-noreply@linkedin.com", "jobalerts-noreply@linkedin.com", "jobs-listings@linkedin.com"]
 _SEP = "\u00b7"  # middle dot — LinkedIn's company/location separator in alert emails
 
+# Pre-compiled patterns used in HTML parsing — avoids re-compiling on every call
+_RE_JOB_URL = re.compile(r"linkedin\.com/(comm/)?jobs/view/\d+")
+_RE_QUERY_STRIP = re.compile(r"\?.*$")
+_RE_SKIP_LABELS = re.compile(
+    r"apply now|see all|similar to|jobs at|jobs in|learn why|unsubscribe|help|message", re.I
+)
+# Social/status badges LinkedIn appends directly to location text (no separator)
+_RE_LOCATION_BADGES = (
+    re.compile(r"\d+ connections?", re.I),
+    re.compile(r"\d+ school alumni", re.I),
+    re.compile(r"Easy Apply", re.I),
+    re.compile(r"Actively recruiting", re.I),
+    re.compile(r"Fast growing", re.I),
+)
+
 
 def fetch_jobs(config: dict[str, Any]) -> list[Job]:
     """Fetch LinkedIn job alert emails via Gmail API (gmail.readonly scope)."""
@@ -141,10 +156,9 @@ def _extract_company_location(title: str, links: list) -> tuple[str, str]:
     company_raw, location_raw = remainder.split(f" {_SEP} ", 1)
     company = company_raw.strip()
     # Strip social/status badges appended by LinkedIn directly to location (no separator)
-    _BADGES = (r"\d+ connections?", r"\d+ school alumni", "Easy Apply", "Actively recruiting", "Fast growing")
     location = location_raw
-    for badge in _BADGES:
-        location = re.sub(badge, "", location, flags=re.I).strip()
+    for badge in _RE_LOCATION_BADGES:
+        location = badge.sub("", location).strip()
     return company, location
 
 
@@ -154,17 +168,14 @@ def _parse_linkedin_alert(html: str, email_date: datetime | None) -> list[Job]:
     jobs: list[Job] = []
 
     # Require a numeric job ID — excludes /search?, /collections/, "see all" links, etc.
-    job_links = soup.find_all("a", href=re.compile(r"linkedin\.com/(comm/)?jobs/view/\d+"))
+    job_links = soup.find_all("a", href=_RE_JOB_URL)
 
     # Group all links by clean URL so we can pick the best title per job
     url_links: dict[str, list] = defaultdict(list)
     for link in job_links:
-        url = re.sub(r"\?.*$", "", link.get("href", "").rstrip("/"))
+        url = _RE_QUERY_STRIP.sub("", link.get("href", "").rstrip("/"))
         if url:
             url_links[url].append(link)
-
-    # Patterns that indicate a UI label rather than a job title
-    _SKIP = re.compile(r"apply now|see all|similar to|jobs at|jobs in|learn why|unsubscribe|help|message", re.I)
 
     for url, links in url_links.items():
         try:
@@ -172,7 +183,7 @@ def _parse_linkedin_alert(html: str, email_date: datetime | None) -> list[Job]:
             # the combined "TitleCompanyLocation" or "Jobs similar to X at Y" links
             candidates = [l.get_text(strip=True) for l in links]
             title = next(
-                (t for t in sorted(candidates, key=len) if len(t) >= 5 and not _SKIP.search(t)),
+                (t for t in sorted(candidates, key=len) if len(t) >= 5 and not _RE_SKIP_LABELS.search(t)),
                 None,
             )
             if not title:

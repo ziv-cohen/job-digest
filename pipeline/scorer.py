@@ -19,17 +19,19 @@ def score_jobs(jobs: list[Job], config: dict[str, Any]) -> list[Job]:
     scoring_cfg = config["scoring"]
     weights = scoring_cfg["weights"]
 
+    relocation_targets = config.get("search", {}).get("locations", {}).get("relocation_targets", [])
+
     for job in jobs:
-        # Pre-compute enrichment flag used by title scorer and digest output
-        job.has_growth_signals = _has_growth_signals(f"{job.title} {job.description}".lower())
+        # Pre-compute lowercased strings reused across multiple scorers
+        title_lower = job.title.lower()
+        job.has_growth_signals = _has_growth_signals(f"{title_lower} {job.description}".lower())
 
         breakdown: dict[str, float] = {}
         breakdown["profile_match"] = 0.0  # filled later by match_profile
-        breakdown["title"] = _score_title(job, scoring_cfg)
-        relocation_targets = config.get("search", {}).get("locations", {}).get("relocation_targets", [])
+        breakdown["title"] = _score_title(job, scoring_cfg, title_lower)
         breakdown["location"] = _score_location(job, scoring_cfg, relocation_targets)
         breakdown["company_type"] = _score_company_type(job, scoring_cfg)
-        breakdown["seniority"] = _score_seniority(job, scoring_cfg)
+        breakdown["seniority"] = _score_seniority(job, scoring_cfg, title_lower)
         breakdown["freshness"] = _score_freshness(job, scoring_cfg)
         breakdown["conditions"] = _score_conditions(job, scoring_cfg)
         job.score_breakdown = breakdown
@@ -56,35 +58,35 @@ def recompute_scores(jobs: list[Job], config: dict[str, Any]) -> None:
 
 _TITLE_PATTERNS = {
     "director": [
-        r"engineering\s+director",
-        r"director\s+of\s+engineering",
-        r"director.*engineering",
-        r"group\s+director.*engineer",
-        r"software\s+engineering\s+director",
+        re.compile(r"engineering\s+director"),
+        re.compile(r"director\s+of\s+engineering"),
+        re.compile(r"director.*engineering"),
+        re.compile(r"group\s+director.*engineer"),
+        re.compile(r"software\s+engineering\s+director"),
     ],
     "senior_em": [
-        r"senior\s+engineering\s+manager",
-        r"sr\.?\s+engineering\s+manager",
+        re.compile(r"senior\s+engineering\s+manager"),
+        re.compile(r"sr\.?\s+engineering\s+manager"),
     ],
     "em": [
-        r"engineering\s+manager",
+        re.compile(r"engineering\s+manager"),
     ],
     "vp": [
-        r"vp\s+(?:of\s+)?engineering",
-        r"vice\s+president.*engineering",
+        re.compile(r"vp\s+(?:of\s+)?engineering"),
+        re.compile(r"vice\s+president.*engineering"),
     ],
     "head": [
-        r"head\s+of\s+engineering",
+        re.compile(r"head\s+of\s+engineering"),
     ],
     "founding_cto": [
-        r"founding\s+cto",
-        r"co-?founder.*cto",
-        r"cto.*co-?found",
-        r"cto.*early\s+stage",
+        re.compile(r"founding\s+cto"),
+        re.compile(r"co-?founder.*cto"),
+        re.compile(r"cto.*co-?found"),
+        re.compile(r"cto.*early\s+stage"),
     ],
     "cto": [
-        r"\bcto\b",
-        r"chief\s+technology\s+officer",
+        re.compile(r"\bcto\b"),
+        re.compile(r"chief\s+technology\s+officer"),
     ],
 }
 
@@ -92,46 +94,47 @@ _TITLE_PATTERNS = {
 _EXCLUDED_DOMAINS = ["hardware", "mechanical", "electrical", "civil", "firmware"]
 
 
-def _score_title(job: Job, cfg: dict) -> float:
+def _score_title(job: Job, cfg: dict, title_lower: str | None = None) -> float:
     title_cfg = cfg["title_match"]
-    title_lower = job.title.lower()
+    if title_lower is None:
+        title_lower = job.title.lower()
 
     # Hard-exclude non-software engineering domains
     if any(kw in title_lower for kw in _EXCLUDED_DOMAINS):
         return 0.0
 
     for pattern in _TITLE_PATTERNS["director"]:
-        if re.search(pattern, title_lower):
+        if pattern.search(title_lower):
             job.seniority = job.seniority or "director"
             return title_cfg["exact_director"]
 
     for pattern in _TITLE_PATTERNS["vp"]:
-        if re.search(pattern, title_lower):
+        if pattern.search(title_lower):
             job.seniority = job.seniority or "vp"
             return title_cfg["exact_vp"]
 
     for pattern in _TITLE_PATTERNS["head"]:
-        if re.search(pattern, title_lower):
+        if pattern.search(title_lower):
             job.seniority = job.seniority or "director"
             return title_cfg["exact_director"]
 
     for pattern in _TITLE_PATTERNS["founding_cto"]:
-        if re.search(pattern, title_lower):
+        if pattern.search(title_lower):
             job.seniority = job.seniority or "cto"
             return title_cfg["founding_cto"]
 
     for pattern in _TITLE_PATTERNS["cto"]:
-        if re.search(pattern, title_lower):
+        if pattern.search(title_lower):
             job.seniority = job.seniority or "cto"
             return title_cfg["exact_cto"]
 
     for pattern in _TITLE_PATTERNS["senior_em"]:
-        if re.search(pattern, title_lower):
+        if pattern.search(title_lower):
             job.seniority = job.seniority or "senior_manager"
             return title_cfg["exact_senior_em"]
 
     for pattern in _TITLE_PATTERNS["em"]:
-        if re.search(pattern, title_lower):
+        if pattern.search(title_lower):
             job.seniority = job.seniority or "manager"
             score = title_cfg["exact_em"]
             if job.has_growth_signals:
@@ -259,7 +262,7 @@ def _score_company_type(job: Job, cfg: dict) -> float:
 
 # ── Seniority ───────────────────────────────────────────────────
 
-def _score_seniority(job: Job, cfg: dict) -> float:
+def _score_seniority(job: Job, cfg: dict, title_lower: str | None = None) -> float:
     sen_cfg = cfg["seniority"]
     seniority = job.seniority.lower() if job.seniority else ""
 
@@ -276,8 +279,9 @@ def _score_seniority(job: Job, cfg: dict) -> float:
         return sen_cfg["manager"]
 
     # Infer from title if not yet set
-    title_lower = job.title.lower()
-    if any(re.search(p, title_lower) for p in _TITLE_PATTERNS["cto"]):
+    if title_lower is None:
+        title_lower = job.title.lower()
+    if any(p.search(title_lower) for p in _TITLE_PATTERNS["cto"]):
         job.seniority = "cto"
         return sen_cfg["cto_level"]
     if any(kw in title_lower for kw in ["vp ", "vice president"]):
